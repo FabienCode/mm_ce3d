@@ -6,6 +6,7 @@ from torch.nn import functional as F
 from mmdet3d.ops import (GroupAll, PAConv, Points_Sampler, QueryAndGroup,
                          gather_points)
 from .builder import SA_MODULES
+from .rr_conv import RR_ConvModule
 
 
 class BasePointSAModule(nn.Module):
@@ -158,11 +159,11 @@ class BasePointSAModule(nn.Module):
         return new_features.squeeze(-1).contiguous()
 
     def forward(
-        self,
-        points_xyz,
-        features=None,
-        indices=None,
-        target_xyz=None,
+            self,
+            points_xyz,
+            features=None,
+            indices=None,
+            target_xyz=None,
     ):
         """forward.
 
@@ -329,6 +330,147 @@ class PointSAModule(PointSAModuleMSG):
                  fps_sample_range_list=[-1],
                  normalize_xyz=False):
         super(PointSAModule, self).__init__(
+            mlp_channels=[mlp_channels],
+            num_point=num_point,
+            radii=[radius],
+            sample_nums=[num_sample],
+            norm_cfg=norm_cfg,
+            use_xyz=use_xyz,
+            pool_mod=pool_mod,
+            fps_mod=fps_mod,
+            fps_sample_range_list=fps_sample_range_list,
+            normalize_xyz=normalize_xyz)
+
+
+@SA_MODULES.register_module()
+class RR_PointSAModuleMSG(BasePointSAModule):
+    """Point set abstraction module with multi-scale grouping (MSG) used in
+    PointNets.
+
+    Args:
+        num_point (int): Number of points.
+        radii (list[float]): List of radius in each ball query.
+        sample_nums (list[int]): Number of samples in each ball query.
+        mlp_channels (list[list[int]]): Specify of the pointnet before
+            the global pooling for each scale.
+        fps_mod (list[str]: Type of FPS method, valid mod
+            ['F-FPS', 'D-FPS', 'FS'], Default: ['D-FPS'].
+            F-FPS: using feature distances for FPS.
+            D-FPS: using Euclidean distances of points for FPS.
+            FS: using F-FPS and D-FPS simultaneously.
+        fps_sample_range_list (list[int]): Range of points to apply FPS.
+            Default: [-1].
+        dilated_group (bool): Whether to use dilated ball query.
+            Default: False.
+        norm_cfg (dict): Type of normalization method.
+            Default: dict(type='BN2d').
+        use_xyz (bool): Whether to use xyz.
+            Default: True.
+        pool_mod (str): Type of pooling method.
+            Default: 'max_pool'.
+        normalize_xyz (bool): Whether to normalize local XYZ with radius.
+            Default: False.
+        bias (bool | str): If specified as `auto`, it will be decided by the
+            norm_cfg. Bias will be set as True if `norm_cfg` is None, otherwise
+            False. Default: "auto".
+    """
+
+    def __init__(self,
+                 num_point,
+                 radii,
+                 sample_nums,
+                 mlp_channels,
+                 fps_mod=['D-FPS'],
+                 fps_sample_range_list=[-1],
+                 dilated_group=False,
+                 norm_cfg=dict(type='BN2d'),
+                 use_xyz=True,
+                 pool_mod='max',
+                 normalize_xyz=False,
+                 bias='auto'):
+        super(RR_PointSAModuleMSG, self).__init__(
+            num_point=num_point,
+            radii=radii,
+            sample_nums=sample_nums,
+            mlp_channels=mlp_channels,
+            fps_mod=fps_mod,
+            fps_sample_range_list=fps_sample_range_list,
+            dilated_group=dilated_group,
+            use_xyz=use_xyz,
+            pool_mod=pool_mod,
+            normalize_xyz=normalize_xyz)
+
+        for i in range(len(self.mlp_channels)):
+            mlp_channel = self.mlp_channels[i]
+            if use_xyz:
+                mlp_channel[0] += 3
+
+            mlp = nn.Sequential()
+            for i in range(len(mlp_channel) - 1):
+                if i == 0:
+                    mlp.add_module(
+                        f'layer{i}',
+                        ConvModule(
+                            mlp_channel[i],
+                            mlp_channel[i + 1],
+                            kernel_size=(1, 1),
+                            stride=(1, 1),
+                            conv_cfg=dict(type='Conv2d'),
+                            norm_cfg=norm_cfg,
+                            bias=bias))
+                else:
+                    mlp.add_module(
+                        f'layer{i}',
+                        RR_ConvModule(
+                            mlp_channel[i],
+                            mlp_channel[i + 1],
+                            kernel_size=(1, 1),
+                            stride=(1, 1),
+                            conv_cfg=dict(type='Conv2d'),
+                            norm_cfg=norm_cfg,
+                            bias=bias))
+            self.mlps.append(mlp)
+
+@SA_MODULES.register_module()
+class RR_PointSAModule(RR_PointSAModuleMSG):
+    """Point set abstraction module with single-scale grouping (SSG) used in
+    PointNets.
+
+    Args:
+        mlp_channels (list[int]): Specify of the pointnet before
+            the global pooling for each scale.
+        num_point (int): Number of points.
+            Default: None.
+        radius (float): Radius to group with.
+            Default: None.
+        num_sample (int): Number of samples in each ball query.
+            Default: None.
+        norm_cfg (dict): Type of normalization method.
+            Default: dict(type='BN2d').
+        use_xyz (bool): Whether to use xyz.
+            Default: True.
+        pool_mod (str): Type of pooling method.
+            Default: 'max_pool'.
+        fps_mod (list[str]: Type of FPS method, valid mod
+            ['F-FPS', 'D-FPS', 'FS'], Default: ['D-FPS'].
+        fps_sample_range_list (list[int]): Range of points to apply FPS.
+            Default: [-1].
+        normalize_xyz (bool): Whether to normalize local XYZ with radius.
+            Default: False.
+    """
+
+    def __init__(self,
+                 mlp_channels,
+                 num_point=None,
+                 radius=None,
+                 num_sample=None,
+                 norm_cfg=dict(type='BN2d'),
+                 use_xyz=True,
+                 pool_mod='max',
+                 fps_mod=['D-FPS'],
+                 fps_sample_range_list=[-1],
+                 normalize_xyz=False):
+        super(RR_PointSAModule, self).__init__(
             mlp_channels=[mlp_channels],
             num_point=num_point,
             radii=[radius],

@@ -5,6 +5,40 @@ from os import path as osp
 from scipy import io as sio
 
 
+#
+#
+# obj_list = self.get_label_objects(sample_idx)
+# point_inner_bbox = np.zeros((SAMPLE_NUM, 6))
+# # print(f"ori pts_inner_bbox shape is {point_inner_bbox.shape[0]}!!!")
+# count_pts_inner_bbox = 0
+# box_count = 0
+# reshape_pc_upright_depth_subsampled = pc_upright_depth_subsampled.reshape(-$
+# for obj in obj_list:
+#     if obj.classname not in self.cat2label.keys(): continue
+# if obj.classname in self.cat2label.keys():
+#     begin_count = count_pts_inner_bbox
+#     box_count += 1
+#     try:
+#         box3d_pts_3d = my_compute_box_3d(obj.centroid,
+#         $obj.h]), obj.heading_angle)
+#         pc_in_box3d, inds = extract_pc_in_box3d( \
+#             reshape_pc_upright_depth_subsampled[:, 0:3], box3d_pts_3d)
+#         # print('box3d_pts_3d is {}, obj.box3d is {}'.format(box3d_pts_$
+#         for a in range(pc_in_box3d.shape[0]):
+#             point_inner_bbox[count_pts_inner_bbox, 0:3] = pc_in_box3d[a$
+#         count_pts_inner_bbox += 1
+#     except:
+#         print(f'{self.split} sample_idx: {sample_idx} {obj.classname} e$
+#     print(
+#         f'{self.split} sample_idx: {sample_idx} {obj.classname} have {c$
+# if box_count == 0:
+#     point_inner_bbox = random_sampling(point_inner_bbox, GT_SAMPLE_NUM)
+# elif count_pts_inner_bbox > GT_SAMPLE_NUM:
+#     point_inner_bbox = random_sampling(point_inner_bbox[0:count_pts_inner_b$
+# else:
+# point_inner_bbox = point_inner_bbox[0:GT_SAMPLE_NUM, :]
+
+
 def rotx(t):
     """Rotation about the x-axis."""
     c = np.cos(t)
@@ -32,30 +66,6 @@ def rotz(t):
                      [0, 0, 1]])
 
 
-def random_sampling(points, num_points, replace=None, return_choices=False):
-    """Random sampling.
-
-    Sampling point cloud to a certain number of points.
-
-    Args:
-        points (ndarray): Point cloud.
-        num_points (int): The number of samples.
-        replace (bool): Whether the sample is with or without replacement.
-        return_choices (bool): Whether to return choices.
-
-    Returns:
-        points (ndarray): Point cloud after sampling.
-    """
-
-    if replace is None:
-        replace = (points.shape[0] < num_points)
-    choices = np.random.choice(points.shape[0], num_points, replace=replace)
-    if return_choices:
-        return points[choices], choices
-    else:
-        return points[choices]
-
-
 def my_compute_box_3d(center, size, heading_angle):
     R = rotz(-1 * heading_angle)
     l, w, h = size
@@ -80,6 +90,30 @@ def extract_pc_in_box3d(pc, box3d):
     ''' pc: (N,3), box3d: (8,3) '''
     box3d_roi_inds = in_hull(pc[:, 0:3], box3d)
     return pc[box3d_roi_inds, :], box3d_roi_inds
+
+
+def random_sampling(points, num_points, replace=None, return_choices=False):
+    """Random sampling.
+
+    Sampling point cloud to a certain number of points.
+
+    Args:
+        points (ndarray): Point cloud.
+        num_points (int): The number of samples.
+        replace (bool): Whether the sample is with or without replacement.
+        return_choices (bool): Whether to return choices.
+
+    Returns:
+        points (ndarray): Point cloud after sampling.
+    """
+
+    if replace is None:
+        replace = (points.shape[0] < num_points)
+    choices = np.random.choice(points.shape[0], num_points, replace=replace)
+    if return_choices:
+        return points[choices], choices
+    else:
+        return points[choices]
 
 
 class SUNRGBDInstance(object):
@@ -164,8 +198,9 @@ class SUNRGBDData(object):
         calib_filepath = osp.join(self.calib_dir, f'{idx:06d}.txt')
         lines = [line.rstrip() for line in open(calib_filepath)]
         Rt = np.array([float(x) for x in lines[0].split(' ')])
-        Rt = np.reshape(Rt, (3, 3), order='F')
+        Rt = np.reshape(Rt, (3, 3), order='F').astype(np.float32)
         K = np.array([float(x) for x in lines[1].split(' ')])
+        K = np.reshape(K, (3, 3), order='F').astype(np.float32)
         return K, Rt
 
     def get_label_objects(self, idx):
@@ -192,29 +227,62 @@ class SUNRGBDData(object):
         def process_single_scene(sample_idx):
             print(f'{self.split} sample_idx: {sample_idx}')
             # convert depth to points
-            SAMPLE_NUM = 50000
-            GT_SAMPLE_NUM = 20000
+            # SAMPLE_NUM = 50000
             # TODO: Check whether can move the point
             #  sampling process during training.
             pc_upright_depth = self.get_depth(sample_idx)
-            pc_upright_depth_subsampled = random_sampling(
-                pc_upright_depth, SAMPLE_NUM)
+            pc_upright_depth_subsampled = pc_upright_depth
+            # random_sampling(pc_upright_depth, SAMPLE_NUM)
 
             info = dict()
             pc_info = {'num_features': 6, 'lidar_idx': sample_idx}
             info['point_cloud'] = pc_info
 
             mmcv.mkdir_or_exist(osp.join(self.root_dir, 'points'))
-            mmcv.mkdir_or_exist(osp.join(self.root_dir, 'gt_points'))
-            # print('heiheiheihei {}'.format(pc_upright_depth_subsampled.shape))
             pc_upright_depth_subsampled.tofile(
                 osp.join(self.root_dir, 'points', f'{sample_idx:06d}.bin'))
 
-
             info['pts_path'] = osp.join('points', f'{sample_idx:06d}.bin')
+            img_path = osp.join('image', f'{sample_idx:06d}.jpg')
+
+            # Find points inner bounding box
+            count_points_inner_bbox = 0
+            points_count = pc_upright_depth_subsampled.shape[0]
+            print("{} total have {} points".format(sample_idx, points_count))
+            points_inner_bbox = np.zeros((points_count, 3))
+            pc_inner_bbox = np.zeros((20000, 3))
+            obj_list = self.get_label_objects(sample_idx)
+            gt_num = 0
+            for obj in obj_list:
+                # print(obj)
+                if obj.classname not in self.cat2label.keys(): continue
+                try:
+                    box3d_pts_3d = my_compute_box_3d(obj.centroid,
+                                                     np.array([obj.l, obj.w, obj.h]), obj.heading_angle)
+                    pc_in_box3d, inds = extract_pc_in_box3d(pc_upright_depth_subsampled[:, 0:3], box3d_pts_3d)
+                    for a in range(pc_in_box3d.shape[0]):
+                        points_inner_bbox[count_points_inner_bbox, 0:3] = pc_in_box3d[a, 0:3]
+                        count_points_inner_bbox += 1
+                    gt_num += 1
+                except:
+                    print(f'{self.split} sample_idx: {sample_idx} {obj.classname} error !!!')
+            if gt_num == 0:
+                pc_inner_bbox = random_sampling(pc_upright_depth_subsampled[:, 0:3], 20000)
+            elif count_points_inner_bbox >= 20000:
+                pc_inner_bbox = random_sampling(points_inner_bbox[0:count_points_inner_bbox, :], 20000)
+            else:
+                pc_inner_bbox = points_inner_bbox[0:20000, :]
+            # else:
+            #     pc_inner_bbox = points_inner_bbox[0:count_points_inner_bbox, ]
+            mmcv.mkdir_or_exist(osp.join(self.root_dir, 'gt_points'))
+            np.save(osp.join(self.root_dir, 'gt_points', f'gt_{sample_idx:06d}.npy'),
+                    pc_inner_bbox)
+            gt_points = np.load(osp.join(self.root_dir, 'gt_points', f'gt_{sample_idx:06d}.npy'))
+
+            print('{} gt_point_file shape is {}&&&&'.format(sample_idx, gt_points.shape))
+
             info['gt_pts_path'] = osp.join('gt_points', f'gt_{sample_idx:06d}.npy')
-            img_name = osp.join(self.image_dir, f'{sample_idx:06d}')
-            img_path = osp.join(self.image_dir, img_name)
+
             image_info = {
                 'image_idx': sample_idx,
                 'image_shape': self.get_image_shape(sample_idx),
@@ -226,63 +294,9 @@ class SUNRGBDData(object):
             calib_info = {'K': K, 'Rt': Rt}
             info['calib'] = calib_info
 
-            # --------------Gt_pts
-            obj_list = self.get_label_objects(sample_idx)
-            point_inner_bbox = np.zeros((SAMPLE_NUM, 6))
-            # print(f"ori pts_inner_bbox shape is {point_inner_bbox.shape[0]}!!!")
-            count_pts_inner_bbox = 0
-            box_count = 0
-            reshape_pc_upright_depth_subsampled = pc_upright_depth_subsampled.reshape(-1, 6)
-            # if box_count != 0:
-            for obj in obj_list:
-                if obj.classname not in self.cat2label.keys(): continue
-                if obj.classname in self.cat2label.keys():
-                    begin_count = count_pts_inner_bbox
-                    box_count += 1
-                    try:
-                        box3d_pts_3d = my_compute_box_3d(obj.centroid,
-                                                         np.array([obj.l, obj.w, obj.h]), obj.heading_angle)
-                        pc_in_box3d, inds = extract_pc_in_box3d( \
-                            reshape_pc_upright_depth_subsampled[:, 0:3], box3d_pts_3d)
-                        # print('box3d_pts_3d is {}, obj.box3d is {}'.format(box3d_pts_3d, obj.box3d))
-                        for a in range(pc_in_box3d.shape[0]):
-                            point_inner_bbox[count_pts_inner_bbox, 0:3] = pc_in_box3d[a, 0:3]
-                            count_pts_inner_bbox += 1
-                    except:
-                        print(f'{self.split} sample_idx: {sample_idx} {obj.classname} error!!!')
-                    print(
-                        f'{self.split} sample_idx: {sample_idx} {obj.classname} have {count_pts_inner_bbox - begin_count} gt pts!')
-            if box_count == 0:
-                point_inner_bbox = random_sampling(pc_upright_depth_subsampled, GT_SAMPLE_NUM)
-                # for i in range(point_inner_bbox_sampler.shape[0]):
-                #     point_inner_bbox[count_pts_inner_bbox, :] = point_inner_bbox_sampler[i, :]
-                #     count_pts_inner_bbox += 1
-            elif count_pts_inner_bbox > GT_SAMPLE_NUM:
-                point_inner_bbox = random_sampling(point_inner_bbox[0:count_pts_inner_bbox, :], GT_SAMPLE_NUM)
-            else:
-                point_inner_bbox = point_inner_bbox[0:GT_SAMPLE_NUM, :]
-
-
-            # if box_count == 0:
-            #     point_inner_bbox = random_sampling(reshape_pc_upright_depth_subsampled[:, 0:3], GT_SAMPLE_NUM)
-            # elif count_pts_inner_bbox > GT_SAMPLE_NUM:
-            #     point_inner_bbox = random_sampling(point_inner_bbox[0:count_pts_inner_bbox, :], GT_SAMPLE_NUM)
-            # else:
-            #     point_inner_bbox = point_inner_bbox[0:GT_SAMPLE_NUM, :]
-
-            # print('{} sample_idx:{} Total have {} gt pts ! pts_inner_bbox shape is {}'.format(self.split, sample_idx,
-            #                                                                                   count_pts_inner_bbox,
-            #                                                                                   point_inner_bbox.shape[
-            #                                                                                       0]))
-            # print(' {} gt_pts shape: {}'.format(sample_idx, point_inner_bbox.shape))
-            np.save(osp.join(self.root_dir, 'gt_points', f'gt_{sample_idx:06d}.npy'),
-                    point_inner_bbox)
-            gt_points = np.load(osp.join(self.root_dir, 'gt_points', f'gt_{sample_idx:06d}.npy'))
-
-            print('Fffffffffff$$$$$$$$###@@@@@ gt_point_file shape is {}'.format(gt_points.shape))
-
             if has_label:
                 obj_list = self.get_label_objects(sample_idx)
+
                 annotations = {}
                 annotations['gt_num'] = len([
                     obj.classname for obj in obj_list
@@ -325,7 +339,6 @@ class SUNRGBDData(object):
                         axis=0)  # (K,8)
                 info['annos'] = annotations
             return info
-
 
         sample_id_list = sample_id_list if \
             sample_id_list is not None else self.sample_id_list

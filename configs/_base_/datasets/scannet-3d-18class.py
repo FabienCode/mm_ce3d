@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'ScanNetDataset'
-data_root = './data/scannet/'
+data_root = '/data/private/hym/project/fcaf3d_midea/data/scannet/'
 class_names = ('cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window',
                'bookshelf', 'picture', 'counter', 'desk', 'curtain',
                'refrigerator', 'showercurtrain', 'toilet', 'sink', 'bathtub',
@@ -93,7 +93,7 @@ eval_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=16,
     workers_per_gpu=4,
     train=dict(
         type='RepeatDataset',
@@ -125,4 +125,4 @@ data = dict(
         test_mode=True,
         box_type_3d='Depth'))
 
-evaluation = dict(pipeline=eval_pipeline)
+evaluation = dict(interval=1, pipeline=eval_pipeline)

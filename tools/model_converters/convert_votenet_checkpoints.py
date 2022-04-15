@@ -1,5 +1,7 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import argparse
 import tempfile
+
 import torch
 from mmcv import Config
 from mmcv.runner import load_state_dict
@@ -18,10 +20,8 @@ def parse_args():
 
 def parse_config(config_strings):
     """Parse config from strings.
-
     Args:
         config_strings (string): strings of model config.
-
     Returns:
         Config: model config
     """
@@ -68,7 +68,6 @@ def parse_config(config_strings):
 
 def main():
     """Convert keys in checkpoints for VoteNet.
-
     There can be some breaking changes during the development of mmdetection3d,
     and this tool is used for upgrading checkpoints trained with old versions
     (before v0.6.0) to the latest one.
@@ -96,25 +95,26 @@ def main():
         'bbox_head.conv_pred.1': 'bbox_head.conv_pred.shared_convs.layer1'
     }
 
-    DEL_KEYS = [
-        'bbox_head.conv_pred.0.bn.num_batches_tracked',
-        'bbox_head.conv_pred.1.bn.num_batches_tracked'
-    ]
+    # DEL_KEYS = [
+    #     'bbox_head.conv_pred.0.bn.num_batches_tracked',
+    #     'bbox_head.conv_pred.1.bn.num_batches_tracked'
+    # ]
+    # bbox_head.conv_pred.0.bn.num_batches_tracked
 
     EXTRACT_KEYS = {
         'bbox_head.conv_pred.conv_cls.weight':
-        ('bbox_head.conv_pred.conv_out.weight', [(0, 2), (-NUM_CLASSES, -1)]),
+            ('bbox_head.conv_pred.conv_out.weight', [(0, 2), (-NUM_CLASSES, -1)]),
         'bbox_head.conv_pred.conv_cls.bias':
-        ('bbox_head.conv_pred.conv_out.bias', [(0, 2), (-NUM_CLASSES, -1)]),
+            ('bbox_head.conv_pred.conv_out.bias', [(0, 2), (-NUM_CLASSES, -1)]),
         'bbox_head.conv_pred.conv_reg.weight':
-        ('bbox_head.conv_pred.conv_out.weight', [(2, -NUM_CLASSES)]),
+            ('bbox_head.conv_pred.conv_out.weight', [(2, -NUM_CLASSES)]),
         'bbox_head.conv_pred.conv_reg.bias':
-        ('bbox_head.conv_pred.conv_out.bias', [(2, -NUM_CLASSES)])
+            ('bbox_head.conv_pred.conv_out.bias', [(2, -NUM_CLASSES)])
     }
 
     # Delete some useless keys
-    for key in DEL_KEYS:
-        converted_ckpt.pop(key)
+    # for key in DEL_KEYS:
+    #     converted_ckpt.pop(key)
 
     # Rename keys with specific prefix
     RENAME_KEYS = dict()

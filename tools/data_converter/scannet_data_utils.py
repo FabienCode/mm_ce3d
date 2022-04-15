@@ -60,6 +60,37 @@ class ScanNetData(object):
         mmcv.check_file_exist(matrix_file)
         return np.load(matrix_file)
 
+    def points_random_sampling(self,
+                               points,
+                               num_samples,
+                               replace=None,
+                               return_choices=False):
+        """Points random sampling.
+
+        Sample points to a certain number.
+
+        Args:
+            points (np.ndarray | :obj:`BasePoints`): 3D Points.
+            num_samples (int): Number of samples to be sampled.
+            replace (bool): Whether the sample is with or without replacement.
+            Defaults to None.
+            return_choices (bool): Whether return choice. Defaults to False.
+
+        Returns:
+            tuple[np.ndarray] | np.ndarray:
+
+                - points (np.ndarray | :obj:`BasePoints`): 3D Points.
+                - choices (np.ndarray, optional): The generated random samples.
+        """
+        if replace is None:
+            replace = (points.shape[0] < num_samples)
+        choices = np.random.choice(
+            points.shape[0], num_samples, replace=replace)
+        if return_choices:
+            return points[choices], choices
+        else:
+            return points[choices]
+
     def get_infos(self, num_workers=4, has_label=True, sample_id_list=None):
         """Get data infos.
 
@@ -100,6 +131,28 @@ class ScanNetData(object):
                     np.long)
                 pts_semantic_mask = np.load(pts_semantic_mask_path).astype(
                     np.long)
+                gt_num = self.get_aligned_box_label(sample_idx).shape[0]
+                if gt_num != 0:
+                    pts_inner_bbox = np.zeros((50000, 3))
+                    count_pts_inner_bbox = 0
+                    for i_instance in np.unique(pts_instance_mask):
+                        # find all points belong to that instance
+                        ind = np.where(pts_instance_mask == i_instance)[0]
+                        # find the semantic label
+                        if pts_semantic_mask[ind[0]] in self.cat_ids:
+                            x = points[ind, :3]
+                            for a in range(x.shape[0]):
+                                pts_inner_bbox[count_pts_inner_bbox, :] = x[a, :]
+                                count_pts_inner_bbox += 1
+                else:
+                    pts_inner_bbox = self.points_random_sampling(points, 50000)
+                    pts_inner_bbox = pts_inner_bbox[:, 0:3]
+                mmcv.mkdir_or_exist(osp.join(self.root_dir, 'gt_points'))
+                np.save(osp.join(self.root_dir, 'gt_points', f'gt_{sample_idx}.npy'),
+                        pts_inner_bbox)
+                info['gt_pts_path'] = osp.join('gt_points', f'gt_{sample_idx}.npy')
+                info['gt_pts_filename'] = osp.join('gt_points', f'gt_{sample_idx}.npy')
+                print('{} gt_point_file shape is {}&&&&'.format(sample_idx, pts_inner_bbox.shape))
 
                 mmcv.mkdir_or_exist(osp.join(self.root_dir, 'instance_mask'))
                 mmcv.mkdir_or_exist(osp.join(self.root_dir, 'semantic_mask'))
@@ -189,7 +242,7 @@ class ScanNetSegData(object):
         self.ignore_index = len(self.cat_ids)
 
         self.cat_id2class = np.ones((self.all_ids.shape[0],), dtype=np.int) * \
-            self.ignore_index
+                            self.ignore_index
         for i, cat_id in enumerate(self.cat_ids):
             self.cat_id2class[cat_id] = i
 
@@ -231,7 +284,7 @@ class ScanNetSegData(object):
         """
         num_classes = len(self.cat_ids)
         num_point_all = []
-        label_weight = np.zeros((num_classes + 1, ))  # ignore_index
+        label_weight = np.zeros((num_classes + 1,))  # ignore_index
         for data_info in self.data_infos:
             label = self._convert_to_label(
                 osp.join(self.data_root, data_info['pts_semantic_mask_path']))

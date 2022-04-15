@@ -8,7 +8,7 @@ model = dict(
         loss_bbox=dict(with_yaw=False)))
 
 dataset_type = 'ScanNetDataset'
-data_root = './data/scannet/'
+data_root = '/data/private/hym/project/fcaf3d_midea/data/scannet/'
 class_names = ('cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window',
                'bookshelf', 'picture', 'counter', 'desk', 'curtain',
                'refrigerator', 'showercurtrain', 'toilet', 'sink', 'bathtub',
@@ -72,7 +72,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=16,
     workers_per_gpu=4,
     train=dict(
         type='RepeatDataset',

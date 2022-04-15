@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import mmcv
 import numpy as np
 import torch
@@ -15,6 +16,12 @@ class Base3DSegmentor(BaseSegmentor):
     The main difference with `BaseSegmentor` is that we modify the keys in
     data_dict and use a 3D seg specific visualization function.
     """
+
+    @property
+    def with_regularization_loss(self):
+        """bool: whether the segmentor has regularization loss for weight"""
+        return hasattr(self, 'loss_regularization') and \
+            self.loss_regularization is not None
 
     def forward_test(self, points, img_metas, **kwargs):
         """Calls either simple_test or aug_test depending on the length of
@@ -65,7 +72,9 @@ class Base3DSegmentor(BaseSegmentor):
                      result,
                      palette=None,
                      out_dir=None,
-                     ignore_index=None):
+                     ignore_index=None,
+                     show=False,
+                     score_thr=None):
         """Results visualization.
 
         Args:
@@ -78,6 +87,13 @@ class Base3DSegmentor(BaseSegmentor):
             ignore_index (int, optional): The label index to be ignored, e.g.
                 unannotated points. If None is given, set to len(self.CLASSES).
                 Defaults to None.
+            show (bool, optional): Determines whether you are
+                going to show result by open3d.
+                Defaults to False.
+            TODO: implement score_thr of Base3DSegmentor.
+            score_thr (float, optional): Score threshold of bounding boxes.
+                Default to None.
+                Not implemented yet, but it is here for unification.
         """
         assert out_dir is not None, 'Expect out_dir, got none.'
         if palette is None:
@@ -108,5 +124,12 @@ class Base3DSegmentor(BaseSegmentor):
 
             pred_sem_mask = result[batch_id]['semantic_mask'].cpu().numpy()
 
-            show_seg_result(points, None, pred_sem_mask, out_dir, file_name,
-                            palette, ignore_index)
+            show_seg_result(
+                points,
+                None,
+                pred_sem_mask,
+                out_dir,
+                file_name,
+                palette,
+                ignore_index,
+                show=show)

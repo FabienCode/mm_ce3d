@@ -80,7 +80,7 @@ model = dict(
         sample_mod='kps',
         nms_thr=0.25,
         score_thr=0.0,
-        per_class_proposal=True,
+        per_class_proposal=False,
         prediction_stages='last_three'))
 
 # dataset settings

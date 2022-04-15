@@ -1,6 +1,8 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import warnings
 from abc import ABCMeta
 from mmcv.runner import BaseModule
+import torch
 
 
 class BasePointNet(BaseModule, metaclass=ABCMeta):
@@ -29,6 +31,8 @@ class BasePointNet(BaseModule, metaclass=ABCMeta):
             torch.Tensor: Features of input points.
         """
         xyz = points[..., 0:3].contiguous()
+        # if torch.is_tensor(xyz):
+        #     xyz = xyz.item()
         if points.size(-1) > 3:
             features = points[..., 3:].transpose(1, 2).contiguous()
         else:

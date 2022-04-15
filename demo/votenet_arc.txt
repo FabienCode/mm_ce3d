@@ -1,0 +1,226 @@
+MDataParallel(
+    (module): MMDataParallel(
+    (module): VoteNet(
+    (backbone): PointNet2SASSG(
+    (SA_modules): ModuleList(
+    (0): PointSAModule(
+    (groupers): ModuleList(
+    (0): QueryAndGroup()
+)
+(mlps): ModuleList(
+    (0): Sequential(
+    (layer0): ConvModule(
+    (conv): Conv2d(4, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer1): ConvModule(
+    (conv): Conv2d(64, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer2): ConvModule(
+    (conv): Conv2d(64, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+)
+(points_sampler): Points_Sampler(
+    (samplers): ModuleList(
+    (0): DFPS_Sampler()
+)
+)
+)
+(1): PointSAModule(
+    (groupers): ModuleList(
+    (0): QueryAndGroup()
+)
+(mlps): ModuleList(
+    (0): Sequential(
+    (layer0): ConvModule(
+    (conv): Conv2d(131, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer1): ConvModule(
+    (conv): Conv2d(128, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer2): ConvModule(
+    (conv): Conv2d(128, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+)
+(points_sampler): Points_Sampler(
+    (samplers): ModuleList(
+    (0): DFPS_Sampler()
+)
+)
+)
+(2): PointSAModule(
+    (groupers): ModuleList(
+    (0): QueryAndGroup()
+)
+(mlps): ModuleList(
+    (0): Sequential(
+    (layer0): ConvModule(
+    (conv): Conv2d(259, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer1): ConvModule(
+    (conv): Conv2d(128, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer2): ConvModule(
+    (conv): Conv2d(128, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+)
+(points_sampler): Points_Sampler(
+    (samplers): ModuleList(
+    (0): DFPS_Sampler()
+)
+)
+)
+(3): PointSAModule(
+    (groupers): ModuleList(
+    (0): QueryAndGroup()
+)
+(mlps): ModuleList(
+    (0): Sequential(
+    (layer0): ConvModule(
+    (conv): Conv2d(259, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer1): ConvModule(
+    (conv): Conv2d(128, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer2): ConvModule(
+    (conv): Conv2d(128, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+)
+(points_sampler): Points_Sampler(
+    (samplers): ModuleList(
+    (0): DFPS_Sampler()
+)
+)
+)
+)
+(FP_modules): ModuleList(
+    (0): PointFPModule(
+    (mlps): Sequential(
+    (layer0): ConvModule(
+    (conv): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer1): ConvModule(
+    (conv): Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+)
+(1): PointFPModule(
+    (mlps): Sequential(
+    (layer0): ConvModule(
+    (conv): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer1): ConvModule(
+    (conv): Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+)
+)
+)
+(bbox_head): VoteHead(
+    (objectness_loss): CrossEntropyLoss()
+(center_loss): ChamferDistance()
+(dir_res_loss): SmoothL1Loss()
+(dir_class_loss): CrossEntropyLoss()
+(size_res_loss): SmoothL1Loss()
+(size_class_loss): CrossEntropyLoss()
+(semantic_loss): CrossEntropyLoss()
+(vote_module): VoteModule(
+    (vote_loss): ChamferDistance()
+(vote_conv): Sequential(
+    (0): ConvModule(
+    (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+(bn): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(1): ConvModule(
+    (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+(bn): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+(conv_out): Conv1d(256, 259, kernel_size=(1,), stride=(1,))
+)
+(vote_aggregation): PointSAModule(
+    (groupers): ModuleList(
+    (0): QueryAndGroup()
+)
+(mlps): ModuleList(
+    (0): Sequential(
+    (layer0): ConvModule(
+    (conv): Conv2d(259, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer1): ConvModule(
+    (conv): Conv2d(128, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer2): ConvModule(
+    (conv): Conv2d(128, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+(bn): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+)
+(points_sampler): Points_Sampler(
+    (samplers): ModuleList(
+    (0): DFPS_Sampler()
+)
+)
+)
+(conv_pred): BaseConvBboxHead(
+    (shared_convs): Sequential(
+    (layer0): ConvModule(
+    (conv): Conv1d(128, 128, kernel_size=(1,), stride=(1,))
+(bn): BatchNorm1d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+(layer1): ConvModule(
+    (conv): Conv1d(128, 128, kernel_size=(1,), stride=(1,))
+(bn): BatchNorm1d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+(activate): ReLU(inplace=True)
+)
+)
+(conv_cls): Conv1d(128, 20, kernel_size=(1,), stride=(1,))
+(conv_reg): Conv1d(128, 77, kernel_size=(1,), stride=(1,))
+)
+)
+)
+)
+)

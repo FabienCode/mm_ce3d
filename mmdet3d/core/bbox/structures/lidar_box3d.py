@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import numpy as np
 import torch
 
@@ -64,7 +65,7 @@ class LiDARInstance3DBoxes(BaseInstance3DBoxes):
                              / |           /  |
                (x0, y0, z1) + ----------- +   + (x1, y1, z0)
                             |  /      .   |  /
-                            | / oriign    | /
+                            | / origin    | /
             left y<-------- + ----------- + (x0, y1, z0)
                 (x0, y0, z0)
         """
@@ -224,7 +225,7 @@ class LiDARInstance3DBoxes(BaseInstance3DBoxes):
         """Convert self to ``dst`` mode.
 
         Args:
-            dst (:obj:`BoxMode`): the target Box mode
+            dst (:obj:`Box3DMode`): the target Box mode
             rt_mat (np.ndarray | torch.Tensor): The rotation and translation
                 matrix between different coordinates. Defaults to None.
                 The conversion from ``src`` coordinates to ``dst`` coordinates

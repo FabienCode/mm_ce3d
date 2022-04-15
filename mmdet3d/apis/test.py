@@ -72,7 +72,7 @@ def single_gpu_test(model,
                     model.module.show_result(
                         img_show,
                         result[i],
-                        show=show,
+                        # show=show,
                         out_file=out_file,
                         score_thr=show_score_thr)
         results.extend(result)

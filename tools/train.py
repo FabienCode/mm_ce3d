@@ -19,7 +19,7 @@ from mmdet3d.models import build_model
 from mmdet3d.utils import collect_env, get_root_logger
 from mmdet.apis import set_random_seed
 from mmseg import __version__ as mmseg_version
-
+import torch.optim.sgd
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
@@ -92,7 +92,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-    # torch.cuda.current_device()
 
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:

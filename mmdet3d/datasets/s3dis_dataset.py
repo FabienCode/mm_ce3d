@@ -1,7 +1,8 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import numpy as np
 from os import path as osp
 
-from mmdet3d.core import show_result, show_seg_result
+from mmdet3d.core import show_seg_result
 from mmdet3d.core.bbox import DepthInstance3DBoxes
 from mmdet.datasets import DATASETS
 from mmseg.datasets import DATASETS as SEG_DATASETS
@@ -12,7 +13,7 @@ from .pipelines import Compose
 
 @DATASETS.register_module()
 class S3DISDataset(Custom3DDataset):
-    """S3DIS Dataset for Detection Task.
+    r"""S3DIS Dataset for Detection Task.
 
     This class is the inner dataset for S3DIS. Since S3DIS has 6 areas, we
     often train on 5 of them and test on the remaining one. The one for
@@ -72,7 +73,7 @@ class S3DISDataset(Custom3DDataset):
         Returns:
             dict: annotation information consists of the following keys:
 
-                - gt_bboxes_3d (:obj:`DepthInstance3DBoxes`): \
+                - gt_bboxes_3d (:obj:`DepthInstance3DBoxes`):
                     3D ground truth bboxes
                 - gt_labels_3d (np.ndarray): Labels of ground truths.
                 - pts_instance_mask_path (str): Path of instance masks.
@@ -114,7 +115,7 @@ class S3DISDataset(Custom3DDataset):
             index (int): Index of the sample data to get.
 
         Returns:
-            dict: Data information that will be passed to the data \
+            dict: Data information that will be passed to the data
                 preprocessing pipelines. It includes the following keys:
 
                 - pts_filename (str): Filename of point clouds.
@@ -149,32 +150,6 @@ class S3DISDataset(Custom3DDataset):
         ]
         return Compose(pipeline)
 
-    def show(self, results, out_dir, show=True, pipeline=None):
-        """Results visualization.
-
-        Args:
-            results (list[dict]): List of bounding boxes results.
-            out_dir (str): Output directory of visualization result.
-            show (bool): Visualize the results online.
-            pipeline (list[dict], optional): raw data loading for showing.
-                Default: None.
-        """
-        assert out_dir is not None, 'Expect out_dir, got none.'
-        pipeline = self._get_pipeline(pipeline)
-        for i, result in enumerate(results):
-            data_info = self.data_infos[i]
-            pts_path = data_info['pts_path']
-            file_name = osp.split(pts_path)[-1].split('.')[0]
-            points = self._extract_data(i, pipeline, 'points').numpy()
-            gt_bboxes = self.get_ann_info(i)['gt_bboxes_3d']
-            gt_bboxes = gt_bboxes.corners.numpy() if len(gt_bboxes) else None
-            gt_labels = self.get_ann_info(i)['gt_labels_3d']
-            pred_bboxes = result['boxes_3d']
-            pred_bboxes = pred_bboxes.corners.numpy() if len(pred_bboxes) else None
-            pred_labels = result['labels_3d']
-            show_result(points, gt_bboxes, gt_labels,
-                        pred_bboxes, pred_labels, out_dir, file_name, False)
-
 
 class _S3DISSegDataset(Custom3DSegDataset):
     r"""S3DIS Dataset for Semantic Segmentation Task.
@@ -201,7 +176,7 @@ class _S3DISSegDataset(Custom3DSegDataset):
             as input. Defaults to None.
         test_mode (bool, optional): Whether the dataset is in test mode.
             Defaults to False.
-        ignore_index (int, optional): The label index to be ignored, e.g. \
+        ignore_index (int, optional): The label index to be ignored, e.g.
             unannotated points. If None is given, set to len(self.CLASSES).
             Defaults to None.
         scene_idxs (np.ndarray | str, optional): Precomputed index to load
@@ -354,7 +329,7 @@ class S3DISSegDataset(_S3DISSegDataset):
             as input. Defaults to None.
         test_mode (bool, optional): Whether the dataset is in test mode.
             Defaults to False.
-        ignore_index (int, optional): The label index to be ignored, e.g. \
+        ignore_index (int, optional): The label index to be ignored, e.g.
             unannotated points. If None is given, set to len(self.CLASSES).
             Defaults to None.
         scene_idxs (list[np.ndarray] | list[str], optional): Precomputed index

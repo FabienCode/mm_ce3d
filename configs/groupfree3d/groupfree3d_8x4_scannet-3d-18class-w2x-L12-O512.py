@@ -86,7 +86,7 @@ model = dict(
 
 # dataset settings
 dataset_type = 'ScanNetDataset'
-data_root = './data/scannet/'
+data_root = '/data/private/hym/project/fcaf3d_midea/data/scannet/'
 class_names = ('cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window',
                'bookshelf', 'picture', 'counter', 'desk', 'curtain',
                'refrigerator', 'showercurtrain', 'toilet', 'sink', 'bathtub',

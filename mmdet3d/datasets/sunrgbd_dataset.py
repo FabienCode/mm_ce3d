@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import numpy as np
 from collections import OrderedDict
 from os import path as osp
@@ -91,11 +92,8 @@ class SUNRGBDDataset(Custom3DDataset):
 
         if self.modality['use_lidar']:
             pts_filename = osp.join(self.data_root, info['pts_path'])
-            gt_pts_filename = osp.join(self.data_root, info['gt_pts_path'])
             input_dict['pts_filename'] = pts_filename
             input_dict['file_name'] = pts_filename
-            input_dict['gt_pts_filename'] = gt_pts_filename
-            input_dict['gt_file_name'] = gt_pts_filename
 
         if self.modality['use_camera']:
             img_filename = osp.join(
@@ -108,7 +106,6 @@ class SUNRGBDDataset(Custom3DDataset):
             # follow Coord3DMode.convert_point
             rt_mat = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]
                                ]) @ rt_mat.transpose(1, 0)
-            calib['K'] = np.reshape(calib['K'], (3, 3), order='F')
             depth2img = calib['K'] @ rt_mat
             input_dict['depth2img'] = depth2img
 
@@ -202,24 +199,24 @@ class SUNRGBDDataset(Custom3DDataset):
             points = points.numpy()
             points[:, 3:] *= 255
 
-            gt_bboxes = self.get_ann_info(i)['gt_bboxes_3d']
-            gt_corners = gt_bboxes.corners.numpy() if len(gt_bboxes) else None
-            gt_labels = self.get_ann_info(i)['gt_labels_3d']
-            pred_bboxes = result['boxes_3d']
-            pred_corners = pred_bboxes.corners.numpy() if len(pred_bboxes) else None
-            pred_labels = result['labels_3d']
-            show_result(points, gt_corners, gt_labels,
-                        pred_corners, pred_labels, out_dir, file_name, False)
+            gt_bboxes = self.get_ann_info(i)['gt_bboxes_3d'].tensor.numpy()
+            pred_bboxes = result['boxes_3d'].tensor.numpy()
+            show_result(points, gt_bboxes.copy(), pred_bboxes.copy(), out_dir,
+                        file_name, show)
 
             # multi-modality visualization
             if self.modality['use_camera']:
                 img = img.numpy()
                 # need to transpose channel to first dim
                 img = img.transpose(1, 2, 0)
+                pred_bboxes = DepthInstance3DBoxes(
+                    pred_bboxes, origin=(0.5, 0.5, 0))
+                gt_bboxes = DepthInstance3DBoxes(
+                    gt_bboxes, origin=(0.5, 0.5, 0))
                 show_multi_modality_result(
                     img,
-                    gt_bboxes.tensor.numpy(),
-                    pred_bboxes.tensor.numpy(),
+                    gt_bboxes,
+                    pred_bboxes,
                     None,
                     out_dir,
                     file_name,

@@ -2,10 +2,10 @@ from .builder import build_sa_module
 from .paconv_sa_module import (PAConvCUDASAModule, PAConvCUDASAModuleMSG,
                                PAConvSAModule, PAConvSAModuleMSG)
 from .point_fp_module import PointFPModule
-from .point_sa_module import PointSAModule, PointSAModuleMSG
+from .point_sa_module import PointSAModule, PointSAModuleMSG, RR_PointSAModule, RR_PointSAModuleMSG
 
 __all__ = [
     'build_sa_module', 'PointSAModuleMSG', 'PointSAModule', 'PointFPModule',
-    'PAConvSAModule', 'PAConvSAModuleMSG', 'PAConvCUDASAModule',
-    'PAConvCUDASAModuleMSG'
+    'PAConvSAModule', 'PAConvSAModuleMSG', 'PAConvCUDASAModule', 'RR_PointSAModule',
+    'PAConvCUDASAModuleMSG', 'RR_PointSAModuleMSG'
 ]

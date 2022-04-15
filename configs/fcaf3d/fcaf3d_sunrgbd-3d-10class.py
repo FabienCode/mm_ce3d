@@ -7,7 +7,7 @@ model = dict(
         n_reg_outs=8))
 
 dataset_type = 'SUNRGBDDataset'
-data_root = '/data2/ecnu/hym/fcaf3d/data/sunrgbd/'
+data_root = 'data/sunrgbd/'
 class_names = ('bed', 'table', 'sofa', 'chair', 'toilet', 'desk', 'dresser',
                'night_stand', 'bookshelf', 'bathtub')
 train_pipeline = [
@@ -66,7 +66,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=2,
+    samples_per_gpu=8,
     workers_per_gpu=4,
     train=dict(
         type='RepeatDataset',

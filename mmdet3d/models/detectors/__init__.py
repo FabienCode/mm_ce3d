@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 from .base import Base3DDetector
 from .centerpoint import CenterPoint
 from .dynamic_voxelnet import DynamicVoxelNet
@@ -13,12 +14,10 @@ from .single_stage_mono3d import SingleStageMono3DDetector
 from .ssd3dnet import SSD3DNet
 from .votenet import VoteNet
 from .voxelnet import VoxelNet
-from .single_stage_sparse import SingleStageSparse3DDetector
-from .VoteAttention import VoteNetAttention
 
 __all__ = [
     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',
     'DynamicMVXFasterRCNN', 'MVXFasterRCNN', 'PartA2', 'VoteNet', 'H3DNet',
     'CenterPoint', 'SSD3DNet', 'ImVoteNet', 'SingleStageMono3DDetector',
-    'FCOSMono3D', 'ImVoxelNet', 'GroupFree3DNet', 'VoteAttention'
+    'FCOSMono3D', 'ImVoxelNet', 'GroupFree3DNet'
 ]

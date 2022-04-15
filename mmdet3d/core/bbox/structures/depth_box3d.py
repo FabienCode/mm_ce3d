@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import numpy as np
 import torch
 
@@ -66,7 +67,7 @@ class DepthInstance3DBoxes(BaseInstance3DBoxes):
                              / |           /  |
                (x0, y0, z1) + ----------- +   + (x1, y1, z0)
                             |  /      .   |  /
-                            | / oriign    | /
+                            | / origin    | /
                (x0, y0, z0) + ----------- + --------> right x
                                           (x1, y0, z0)
         """
@@ -233,7 +234,7 @@ class DepthInstance3DBoxes(BaseInstance3DBoxes):
         """Convert self to ``dst`` mode.
 
         Args:
-            dst (:obj:`BoxMode`): The target Box mode.
+            dst (:obj:`Box3DMode`): The target Box mode.
             rt_mat (np.ndarray | torch.Tensor): The rotation and translation
                 matrix between different coordinates. Defaults to None.
                 The conversion from ``src`` coordinates to ``dst`` coordinates

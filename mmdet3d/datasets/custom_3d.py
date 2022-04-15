@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import mmcv
 import numpy as np
 import tempfile
@@ -98,11 +99,9 @@ class Custom3DDataset(Dataset):
         info = self.data_infos[index]
         sample_idx = info['point_cloud']['lidar_idx']
         pts_filename = osp.join(self.data_root, info['pts_path'])
-        gt_pts_filename = osp.join(self.data_root, info['gt_pts_path'])
 
         input_dict = dict(
             pts_filename=pts_filename,
-            gt_pts_filename=gt_pts_filename,
             sample_idx=sample_idx,
             file_name=pts_filename)
 
@@ -155,7 +154,7 @@ class Custom3DDataset(Dataset):
         example = self.pipeline(input_dict)
         if self.filter_empty_gt and \
                 (example is None or
-                 ~(example['gt_labels_3d']._data != -1).any()):
+                    ~(example['gt_labels_3d']._data != -1).any()):
             return None
         return example
 
