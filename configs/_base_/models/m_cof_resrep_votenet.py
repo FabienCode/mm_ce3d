@@ -1,17 +1,19 @@
 model = dict(
     type='VoteNet',
     backbone=dict(
-        type='PointNet2SASSG',
+        type='cof_rr_PointNet2SASSG',
         in_channels=4,
         num_points=(2048, 1024, 512, 256),
         radius=(0.2, 0.4, 0.8, 1.2),
         num_samples=(64, 32, 16, 16),
+
+        # ========= ori
         sa_channels=((64, 64, 128), (128, 128, 256), (128, 128, 256),
                      (128, 128, 256)),
         fp_channels=((256, 256), (256, 256)),
         norm_cfg=dict(type='BN2d'),
         sa_cfg=dict(
-            type='PointSAModule',
+            type='cof_rr_PointSAModule',
             pool_mod='max',
             use_xyz=True,
             normalize_xyz=True)),
@@ -19,6 +21,7 @@ model = dict(
         type='VoteHead',
         vote_module_cfg=dict(
             in_channels=256,
+            # in_channels=242,
             vote_per_seed=1,
             gt_per_seed=3,
             conv_channels=(256, 256),
@@ -36,10 +39,14 @@ model = dict(
             radius=0.3,
             num_sample=16,
             mlp_channels=[256, 128, 128, 128],
+            # mlp_channels=[256, 128, 128, 128], # 0.05
+            # mlp_channels=[256, 127, 128, 128], # 0.1
+            # mlp_channels=[256, 112, 122, 110],  # 0.3
             use_xyz=True,
             normalize_xyz=True),
         pred_layer_cfg=dict(
             in_channels=128, shared_conv_channels=(128, 128), bias=True),
+        # in_channels=110, shared_conv_channels=(110, 110), bias=True), # 0.3
         conv_cfg=dict(type='Conv1d'),
         norm_cfg=dict(type='BN1d'),
         objectness_loss=dict(

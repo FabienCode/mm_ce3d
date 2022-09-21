@@ -1,7 +1,7 @@
 model = dict(
     type='VoteNet',
     backbone=dict(
-        type='PointNet2SASSG',
+        type='RR_PointNet2SASSG',
         in_channels=4,
         num_points=(2048, 1024, 512, 256),
         radius=(0.2, 0.4, 0.8, 1.2),
@@ -127,5 +127,5 @@ model = dict(
     test_cfg=dict(
         sample_mod='seed',
         nms_thr=0.25,
-        score_thr=0.8,
+        score_thr=0.05,
         per_class_proposal=True))
