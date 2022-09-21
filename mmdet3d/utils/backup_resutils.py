@@ -1,22 +1,15 @@
-import time
-
 import numpy as np
 import torch
 import torch.nn as nn
 from collections import defaultdict
-import mmcv
 from mmcv.cnn import get_model_complexity_info
 from mmdet.models.builder import DETECTORS
-from mmcv.parallel.utils import is_module_wrapper
 from mmcv import Config
 import string
 import torch.nn.functional as F
 from mmcv.utils import _BatchNorm, _InstanceNorm, build_from_cfg, is_list_of
 from torch.nn import GroupNorm, LayerNorm
 from copy import deepcopy
-from mmcv.runner.checkpoint import load_state_dict
-
-# from mmcv.runner.checkpoint import save_checkpoint
 
 ORIGINAL_CHANNELS = {'sa_channels': [(64, 64, 128), (128, 128, 256), (128, 128, 256),
                                      (128, 128, 256)],
@@ -24,10 +17,9 @@ ORIGINAL_CHANNELS = {'sa_channels': [(64, 64, 128), (128, 128, 256), (128, 128, 
 ORIGINAL_CHANNELS_list = {'sa_channels': [[64, 64, 128], [128, 128, 256], [128, 128, 256],
                                           [128, 128, 256]],
                           'fp_channels': [[256, 256], [256, 256]]}
-FLOPS_TARGET = 0.8
-# CHANNELS_TARGET = 2816 * 0.3
+FLOPS_TARGET = 0.4
 NUM_AT_LEAST = 1
-THRESH = 1e-5
+THRESH = 1e-4
 
 
 def get_compactor_mask_dict(model: nn.Module):
@@ -94,12 +86,24 @@ def resrep_mask_model(model: nn.Module):
     cur_flops = float(cur_flops.split()[0])
     # print('now deactivated {} filters'.format(cur_deactivated))
     if cur_flops > FLOPS_TARGET * original_flops:
-        next_deactivated_max = cur_deactivated + 2
+        next_deactivated_max = cur_deactivated + 4
         # print('next deac max', next_deactivated_max)
     else:
         next_deactivated_max = cur_deactivated
 
     assert next_deactivated_max > 0
+
+    # ============= lamp BEGIN
+
+    compactor_score = get_flatted_scores(model)
+    concat_scores = torch.cat(compactor_score, dim=0)
+    topks, _ = torch.topk(concat_scores, next_deactivated_max)
+    threshold = topks[-1]
+
+    final_survs = [torch.ge(score, threshold * torch.ones(score.size()).to(score.device)).sum() for score in
+                   compactor_score]
+    # ============ lamp END
+
     attempt_deps_list = {'sa_channels': [[64, 64, 128], [128, 128, 256], [128, 128, 256],
                                          [128, 128, 256]],
                          'fp_channels': [[256, 256], [256, 256]]}
@@ -110,33 +114,44 @@ def resrep_mask_model(model: nn.Module):
                                         tuple(attempt_deps_list['sa_channels'][1]),
                                         tuple(attempt_deps_list['sa_channels'][2]),
                                         tuple(attempt_deps_list['sa_channels'][3])],
-                        'fp_channels': [(256, 256), (256, 256)]}
+                        'fp_channels': [tuple(attempt_deps_list['fp_channels'][0]),
+                                        (256, 256)]}
         # attempt_flops, attempt_params = rr_flops(attempt_deps, 'attempt_network')
         # attempt_flops = float(attempt_flops.split()[0])
-        # print('attempt flops ', attempt_flops)
+        # # print('attempt flops ', attempt_flops)
         # if attempt_flops <= FLOPS_TARGET * original_flops:
         #     break
 
         # pruning ======================
         attempt_layer_filter = sorted_metric_dict[i]
-        if attempt_deps_list['sa_channels'][int(attempt_layer_filter[0] / 2)][attempt_layer_filter[0] % 2 + 1] \
-                <= NUM_AT_LEAST:
-            skip_idx.append(i)
+        if attempt_layer_filter[0] <= 7:
+            if attempt_deps_list['sa_channels'][int(attempt_layer_filter[0] / 2)][attempt_layer_filter[0] % 2 + 1] \
+                    <= NUM_AT_LEAST:
+                skip_idx.append(i)
+                i += 1
+                continue
+            attempt_deps_list['sa_channels'][int(attempt_layer_filter[0] / 2)][attempt_layer_filter[0] % 2 + 1] -= 1
             i += 1
-            continue
-        attempt_deps_list['sa_channels'][int(attempt_layer_filter[0] / 2)][attempt_layer_filter[0] % 2 + 1] -= 1
-        i += 1
-        if i >= next_deactivated_max:
-            break
+            if i >= next_deactivated_max:
+                break
+        else:
+            if attempt_deps_list['fp_channels'][0][1] <= NUM_AT_LEAST:
+                skip_idx.append(i)
+                i += 1
+                continue
+            attempt_deps_list['fp_channels'][0][1] -= 1
+            i += 1
+            if i >= next_deactivated_max:
+                break
 
     layer_masked_out_filters = defaultdict(list)  # layer_idx : [zeros]
     for k in range(i):
         if k not in skip_idx:
             layer_masked_out_filters[sorted_metric_dict[k][0]].append(sorted_metric_dict[k][1])
-
-    set_model_masks(model, layer_masked_out_filters)
     attempt_flops, attempt_params = rr_flops(attempt_deps, 'attempt_network')
     attempt_flops = float(attempt_flops.split()[0])
+
+    set_model_masks(model, layer_masked_out_filters)
     return attempt_deps_list, attempt_flops
 
 
@@ -158,6 +173,14 @@ def get_cur_num_deactivated_filters(cur_deps):
     return result
 
 
+def sum_list(a):
+    sum = 0
+    for i in range(len(a)):
+        sum += a[i]
+
+    return sum
+
+
 def set_model_masks(model, layer_masked_out_filters):
     i = 0
     for child_module in model.modules():
@@ -167,37 +190,109 @@ def set_model_masks(model, layer_masked_out_filters):
             i += 1
 
 
-def resrep_get_deps_and_metric_dict(origin_channels, model: nn.Module):
-    new_deps = deepcopy(origin_channels)
-    layer_ones, metric_dict = resrep_get_layer_mask_ones_and_metric_dict(model)
+def get_deps_if_prune_low_metric(model):
+    threshold = THRESH
+    new_deps = deepcopy(ORIGINAL_CHANNELS)
+    layer_ones = {}
+    pruned_ids = []
+    i = 0
+    for child_module in model.modules():
+        if hasattr(child_module, 'mask'):
+            metric_vector = child_module.get_metric_vector()
+
+            tmp_pruned = np.where(metric_vector < THRESH)[0]
+            if len(tmp_pruned) == len(metric_vector):
+                sorted_ids = np.argsort(metric_vector)
+                tmp_pruned = sorted_ids[:-1]
+            pruned_ids.append(tmp_pruned)
+
+            num_filters_under_thres = np.sum(metric_vector >= threshold)
+            layer_ones[i] = num_filters_under_thres
+            i += 1
     new_deps['sa_channels'] = [(64, layer_ones[0], layer_ones[1]), (128, layer_ones[2], layer_ones[3]),
                                (128, layer_ones[4], layer_ones[5]),
                                (128, layer_ones[6], layer_ones[7])]
+
+    new_deps['fp_channels'] = [(256, layer_ones[8]), (256, 256)]
+    return new_deps, pruned_ids
+
+
+def resrep_get_deps_and_metric_dict(origin_channels, model: nn.Module):
+    new_deps = deepcopy(origin_channels)
+    layer_ones, metric_dict = resrep_get_layer_mask_ones_and_metric_dict(model, threshold=THRESH)
+    new_deps['sa_channels'] = [(64, layer_ones[0], layer_ones[1]), (128, layer_ones[2], layer_ones[3]),
+                               (128, layer_ones[4], layer_ones[5]),
+                               (128, layer_ones[6], layer_ones[7])]
+    new_deps['fp_channels'] = [(256, layer_ones[8]), (256, 256)]
     return new_deps, metric_dict
 
 
 #   pacesetter is not included here
-def resrep_get_layer_mask_ones_and_metric_dict(model: nn.Module):
+def resrep_get_layer_mask_ones_and_metric_dict(model: nn.Module, threshold):
+    normal_factor = 1e-4
     layer_mask_ones = {}
     layer_metric_dict = {}
     report_deps = []
     # model = model.modules()
+
+    # ============ dis points features
+    dis_channels_norm = []
+
+    # $$$$$$$$$$$  cof operation ^^^^^^^^
+    cof_channels_norm = []
+    for child_module in model.modules():
+        if hasattr(child_module, 'cof_channels_norm'):
+            tmp_module_channel_norm = child_module.cof_channels_norm
+            tmp_module_channel_norm.pop(0)
+            for i in range(len(tmp_module_channel_norm)):
+                cof_channels_norm.append(tmp_module_channel_norm[i])
+        if hasattr(child_module, 'dis_points_norm'):
+            tmp_module_channel_norm = child_module.dis_points_norm
+            if len(tmp_module_channel_norm) != 0:
+                tmp_module_channel_norm.pop(0)
+            for i in range(len(tmp_module_channel_norm)):
+                dis_channels_norm.append(tmp_module_channel_norm[i])
+    # dis_channels_norm.pop()
+    cof_channels_norm.pop()
+    # ======= sa cof_norm
     i = 0
     for child_module in model.modules():
         # print(child_module)
         if hasattr(child_module, 'mask'):
-
+            # metric_vector = child_module.get_metric_vector()
+            # num_filters_under_thres = np.sum(metric_vector < threshold)
             layer_mask_ones[i] = child_module.get_num_mask_ones()
             metric_vector = child_module.get_metric_vector()
-            # print('cur conv idx', child_module.conv_idx)
-            # if len(metric_vector <= 512):
-            #     print(metric_vector)#TODO
+            if i <= 7:
+                metric_vector += dis_channels_norm[
+                                     i].detach().cpu().numpy() * normal_factor  # after cof_attention metric
+            metric_vector += cof_channels_norm[
+                                 i].detach().cpu().numpy() * normal_factor  # after cof_attention metric
             for j in range(len(metric_vector)):
                 layer_metric_dict[(i, j)] = metric_vector[j]
             report_deps.append(layer_mask_ones[i])
             i += 1
     # print('now active deps: ', report_deps)
     return layer_mask_ones, layer_metric_dict
+
+
+def get_flatted_scores(model):
+    # compactor_weight = []
+    compactor_layer_norm = []
+    for child_module in model.modules():
+        if hasattr(child_module, 'mask'):
+            new_compactor_value = child_module.pwc.weight.data.detach().cpu().numpy()
+            zeros_indices = np.where(child_module.mask.cpu().numpy() == 0)
+            new_compactor_value[np.array(zeros_indices), :, :, :] = 0.0
+            tmp_norm = torch.sqrt(torch.sum(torch.from_numpy(new_compactor_value) ** 2, dim=(1, 2, 3)))
+            # compactor_weight.append(torch.from_numpy(new_compactor_value).cuda().type(torch.cuda.FloatTensor))
+            compactor_layer_norm.append(tmp_norm.cuda().type(torch.cuda.FloatTensor))
+            # compactor_weight.append(torch.mul(child_module.pwc.weight, child_module.mask))
+            # compactor_weight.append(child_module.pwc.weight)
+
+    flattend_scores = [normalize_scores(w ** 2).view(-1) for w in compactor_layer_norm]
+
+    return flattend_scores
 
 
 def rr_flops(channel, network_name, print_log=False):
@@ -228,14 +323,31 @@ def rr_flops(channel, network_name, print_log=False):
     return flops, params
 
 
-def compactor_convert(model, save_path):
-    origin_deps = ORIGINAL_CHANNELS
+def normalize_scores(scores):
+    """
+    Normalizing scheme for LAMP.
+    """
+    # sort scores in an ascending order
+    sorted_scores, sorted_idx = scores.sort(descending=False)
+    # compute cumulative sum
+    scores_cumsum_temp = sorted_scores.cumsum(dim=0)
+    scores_cumsum = torch.zeros(scores_cumsum_temp.shape, device=scores.device)
+    scores_cumsum[1:] = scores_cumsum_temp[:len(scores_cumsum_temp) - 1]
+    # normalize by cumulative sum
+    sorted_scores /= (scores.sum() - scores_cumsum)
+    # tidy up and output
+    new_scores = torch.zeros(scores_cumsum.shape, device=scores.device)
+    new_scores[sorted_idx] = sorted_scores
+
+    return new_scores.view(scores.shape)
+
+
+def compactor_convert(model, checkpoint):
     thresh = THRESH
     compactor_mats = {}
-    compactor_list = [2, 4, 7, 9, 12, 14, 17, 19]
-    compactor_list_to_cfg = {2: 0, 4: 1, 7: 2, 9: 3, 12: 4, 14: 5, 17: 6, 19: 7}
+    compactor_list = [2, 4, 7, 9, 12, 14, 17, 19, 22]
+    compactor_list_to_cfg = {2: 0, 4: 1, 7: 2, 9: 3, 12: 4, 14: 5, 17: 6, 19: 7, 22: 8}
 
-    compactor_next_dict = {}
     i = 0
     for submodule in model.modules():
         if hasattr(submodule, 'mask'):
@@ -243,8 +355,6 @@ def compactor_convert(model, save_path):
             i += 1
 
     pruned_deps = deepcopy(ORIGINAL_CHANNELS_list)
-
-    cur_conv_idx = -1
     pop_name_set = set()
 
     kernel_name_list = []
@@ -267,14 +377,31 @@ def compactor_convert(model, save_path):
         if kernel_value.ndim == 2:
             continue
         fused_k, fused_b = fuse_conv_bn(save_dict, pop_name_set, kernel_name)
+        # fused_k, fused_b = _fuse_conv_bn(model, kernel_name)
         if_compactor = conv_id + 1
         fold_direct = if_compactor in compactor_mats
         if fold_direct:
             fm = compactor_mats[if_compactor]
             fused_k, fused_b, pruned_ids = fold_conv(fused_k, fused_b, thresh, fm)
-            pruned_deps['sa_channels'][int(compactor_list_to_cfg[if_compactor] / 2)][
-                compactor_list_to_cfg[if_compactor] % 2 + 1] -= len(pruned_ids)
+            if conv_id <= 20:
+                pruned_deps['sa_channels'][int(compactor_list_to_cfg[if_compactor] / 2)][
+                    compactor_list_to_cfg[if_compactor] % 2 + 1] -= len(pruned_ids)
+            else:
+                pruned_deps['fp_channels'][0][1] -= len(pruned_ids)
             if len(pruned_ids) > 0:
+                if conv_id == 8:
+                    fo_kernel_name = fully_kernel_name_list[23]
+                    fo_value = save_dict[fo_kernel_name]
+                    fo_value = np.delete(fo_value, pruned_ids, axis=1)
+                    save_dict[fo_kernel_name] = fo_value
+
+                if conv_id == 13:
+                    fo_kernel_name = fully_kernel_name_list[20]
+                    fo_value = save_dict[fo_kernel_name]
+                    fo_value = np.delete(fo_value, pruned_ids, axis=1)
+                    save_dict[fo_kernel_name] = fo_value
+                if conv_id == 18:
+                    pruned_ids += pruned_deps['sa_channels'][2][2]
                 fo_kernel_name = fully_kernel_name_list[conv_id + 2]
                 fo_value = save_dict[fo_kernel_name]
                 if fo_value.ndim == 4:
@@ -293,33 +420,107 @@ def compactor_convert(model, save_path):
 
         save_dict[kernel_name] = fused_k
         save_dict[kernel_name.replace('.weight', '.bias')] = fused_b
-    # meta = {}
-    # meta.update(mmcv_version=mmcv.__version__, time=time.asctime())
-    #
-    # if is_module_wrapper(model):
-    #     model = model.module
-    #
-    # if hasattr(model, 'CLASSES') and model.CLASSES is not None:
-    #     # save class name to the meta
-    #     meta.update(CLASSES=model.CLASSES)
-
-    # save_dict['deps'] = pruned_deps
     for name in pop_name_set:
         save_dict.pop(name)
 
-    state_dict = {k: v for k, v in save_dict.items() if 'compactor' not in k}
+    final_dict = {k.replace('module.', ''): v for k, v in save_dict.items() if
+                  'num_batches' not in k and 'compactor' not in k}
+    cfg = Config.fromfile('/data/private/hym/project/fcaf3d_midea/configs/votenet/votenet_8x8_scannet-3d-18class.py')
+    cfg_model = cfg.model
+    cfg_model.backbone.sa_channels = pruned_deps['sa_channels']
+    cfg_model.backbone.fp_channels = pruned_deps['fp_channels']
+    new_model = DETECTORS.build(
+        cfg_model, default_args=dict(train_cfg=cfg.get('train_cfg'), test_cfg=cfg.get('test_cfg')))
 
-    # checkpoint = {
-    #     'meta': meta,
-    #     'state_dict': state_dict
-    # }
+    if torch.cuda.is_available():
+        new_model.cuda()
+    new_model = fuse_compactor(new_model, final_dict)
+    model_dict = new_model.state_dict()
+    checkpoint_model = checkpoint['state_dict']
+    checkpoint_pre_model_final = {k: v for k, v in checkpoint_model.items() if
+                                  'bbox_head' in k}
+    # or 'gt_backbone' in k or 'pointnet' in k or 'gt_attention' in k
+    checkpoint_model = {k: v for k, v in checkpoint_pre_model_final.items() if k in model_dict}
+    model_dict.update(checkpoint_model)
+    new_model.load_state_dict(model_dict)
 
-    # final_dict = {k.replace('module.', ''): v for k, v in save_dict.items() if
-    #               'num_batches' not in k and 'compactor' not in k}
+    return new_model
 
-    # save_hdf5(final_dict, save_path)
-    # print('---------------saved {} numpy arrays to {}---------------'.format(len(save_dict), save_path))
-    return checkpoint
+
+def fuse_compactor(module, save_dict):
+    # new_model_kernel_name = []
+    # new_model_save_dict = {}
+    #
+    # for k, v in module.state_dict().items():
+    #     v = v.detach().cpu().numpy()
+    #     if v.ndim in [2, 4]:
+    #         new_model_kernel_name.append(k)
+    #     new_model_save_dict[k] = v
+    for name, layer in module.named_modules():
+        if isinstance(layer, nn.Conv2d) and 'backbone' in name:
+            layer.weight = nn.Parameter(torch.tensor(save_dict[f'{name}' + '.weight']).type(torch.FloatTensor))
+            layer.bias = nn.Parameter(torch.tensor(save_dict[f'{name}' + '.bias']).type(torch.FloatTensor))
+        if hasattr(layer, 'bn') and 'backbone' in name:
+            layer.bn = nn.Identity()
+    # fuse_identify_bn(module)
+
+    #     if 'conv' in name:
+    # for child_module in module.modules():
+    #     if hasattr(child_module, 'conv') and 'backbone' in child_module:
+    #         child_module.conv.weight = save_dict[f'{child_module}'+'.conv.weight']
+    #         child_module.conv.bias = save_dict[f'{child_module}'+'.conv.bias']
+
+    # last_conv = None
+    # last_conv_name = None
+    # for name, child in module.named_children():
+    #     if isinstance(child,
+    #                   (nn.modules.batchnorm._BatchNorm, nn.SyncBatchNorm)):
+    #         if last_conv is None:  # only fuse BN that is after Conv
+    #             continue
+    #         last_conv.weight = save_dict[last_conv_name.weight]
+    #         last_conv.bias = save_dict[last_conv_name.bias]
+    #         module._modules[last_conv_name] = last_conv
+    #         # To reduce changes, set BN as Identity instead of deleting it.
+    #         module._modules[name] = nn.Identity()
+    #         last_conv = None
+    #     elif isinstance(child, nn.Conv2d):
+    #         last_conv = child
+    #         last_conv_name = name
+    #     else:
+    #         fuse_compactor(child, save_dict)
+    return module
+
+
+def fuse_identify_bn(module):
+    """Recursively fuse conv and bn in a module.
+
+    During inference, the functionary of batch norm layers is turned off
+    but only the mean and var alone channels are used, which exposes the
+    chance to fuse it with the preceding conv layers to save computations and
+    simplify network structures.
+
+    Args:
+        module (nn.Module): Module to be fused.
+
+    Returns:
+        nn.Module: Fused module.
+    """
+    last_conv = None
+    last_conv_name = None
+
+    for name, child in module.named_children():
+        if isinstance(child,
+                      (nn.modules.batchnorm._BatchNorm, nn.SyncBatchNorm)):
+            if last_conv is None:  # only fuse  backbone BN that is after Conv
+                continue
+            # To reduce changes, set BN as Identity instead of deleting it.
+            module._modules[name] = nn.Identity()
+            last_conv = None
+        elif isinstance(child, nn.Conv2d):
+            last_conv = child
+        else:
+            fuse_identify_bn(child)
+    return module
 
 
 def fuse_conv_bn(save_dict, pop_name_set, kernel_name):
@@ -336,8 +537,8 @@ def fuse_conv_bn(save_dict, pop_name_set, kernel_name):
     gamma = save_dict[gamma_name]
     beta = save_dict[beta_name]
     kernel_value = save_dict[kernel_name]
-    print('kernel name', kernel_name)
-    print('kernel, mean, var, gamma, beta', kernel_value.shape, mean.shape, var.shape, gamma.shape, beta.shape)
+    # print('kernel name', kernel_name)
+    # print('kernel, mean, var, gamma, beta', kernel_value.shape, mean.shape, var.shape, gamma.shape, beta.shape)
     return _fuse_kernel(kernel_value, gamma, var, eps=1e-5), _fuse_bias(mean, var, gamma, beta, eps=1e-5)
 
 
@@ -378,8 +579,11 @@ def fold_conv(fused_k, fused_b, thresh, compactor_mat):
 
     if type(bias) is not np.ndarray:
         bias = np.array([bias])
+    kernel = nn.Parameter(kernel)
+    bias = nn.Parameter(torch.from_numpy(bias))
 
     return kernel, bias, filter_ids_below_thresh
+
 
 # def add_params(params, module, prefix='', is_dcn_module=None):
 #     is_norm = isinstance(module, (_BatchNorm, _InstanceNorm, GroupNorm, LayerNorm))
@@ -398,3 +602,112 @@ def fold_conv(fused_k, fused_b, thresh, compactor_mat):
 #         model = model.module
 #
 #     compactor_paras = []
+
+def _fuse_conv_bn(conv, bn):
+    """Fuse conv and bn into one module.
+
+    Args:
+        conv (nn.Module): Conv to be fused.
+        bn (nn.Module): BN to be fused.
+
+    Returns:
+        nn.Module: Fused module.
+    """
+    conv_w = conv.weight
+    conv_b = conv.bias if conv.bias is not None else torch.zeros_like(
+        bn.running_mean)
+
+    factor = bn.weight / torch.sqrt(bn.running_var + bn.eps)
+    conv.weight = nn.Parameter(conv_w *
+                               factor.reshape([conv.out_channels, 1, 1, 1]))
+    conv.bias = nn.Parameter((conv_b - bn.running_mean) * factor + bn.bias)
+    return conv
+
+
+# def convert_compactor2(module):
+#     last_conv = None
+#     last_conv_name = None
+#     last2_conv = None
+#     last2_conv_name = None
+#
+#     for name, child in module.named_children():
+
+def compactor_weight_zero(model):
+    for submodule in model.modules():
+        if hasattr(submodule, 'mask'):
+            metric_vec = torch.Tensor(submodule.get_metric_vector())
+            filter_ids_below_thresh = torch.where(metric_vec < 1e-5)[0]
+            submodule.set_weight_zero(filter_ids_below_thresh)
+    return model
+
+
+def compactor_convert2(module, checkpoints):
+    new_channels, pruned_ids = get_deps_if_prune_low_metric(module)
+
+    # according to pruned_ids to create new model
+    cfg = Config.fromfile('/data/private/hym/project/fcaf3d_midea/configs/votenet/votenet_8x8_scannet-3d-18class.py')
+    cfg_model = cfg.model
+    cfg_model.backbone.sa_channels = new_channels['sa_channels']
+    cfg_model.backbone.fp_channels = new_channels['fp_channels']
+    new_model = DETECTORS.build(
+        cfg_model, default_args=dict(train_cfg=cfg.get('train_cfg'), test_cfg=cfg.get('test_cfg')))
+    if torch.cuda.is_available():
+        new_model.cuda()
+
+    compactor_layer = []
+    for child_module in module.modules():
+        if hasattr(child_module, 'compactor'):
+            compactor_layer.append(child_module)
+    i = 0
+    for m in range(len(compactor_layer)):
+        compactor_layer[i].conv.weight, compactor_layer[i].conv.bias, _ = fold_conv(
+            compactor_layer[i].conv.weight.detach().cpu().numpy(),
+            compactor_layer[i].conv.bias.detach().cpu().numpy(),
+            THRESH,
+            compactor_layer[i].compactor.pwc.weight.detach().cpu().numpy())
+        i += 1
+    kernel_name_list = []
+    fully_kernel_name_list = []
+    save_dict = {}
+    for k, v in module.state_dict().items():
+        if 'cof_attention' not in k:
+            v = v.detach().cpu().numpy()
+            if v.ndim in [2, 4] and 'compactor.pwc' not in k:
+                kernel_name_list.append(k)
+                fully_kernel_name_list.append(k)
+            elif v.ndim in [2, 4]:
+                fully_kernel_name_list.append(k)
+            save_dict[k] = v
+    compactor_next_layer = []
+
+    for i in range(len(fully_kernel_name_list)):
+        if 'compactor' in fully_kernel_name_list[i]:
+            compactor_next_layer.append(fully_kernel_name_list[i + 1])
+        i += 1
+
+    for i in range(len(compactor_next_layer)):
+        save_dict[compactor_next_layer[i]] = np.delete(save_dict[compactor_next_layer[i]], pruned_ids[i], axis=1)
+
+    # m
+    for i in range(len(pruned_ids)):
+        if i == 3:
+            save_dict[fully_kernel_name_list[23]] = np.delete(save_dict[fully_kernel_name_list[23]], pruned_ids[i],
+                                                              axis=1)
+        if i == 5:
+            save_dict[fully_kernel_name_list[20]] = np.delete(save_dict[fully_kernel_name_list[20]], pruned_ids[i],
+                                                              axis=1)
+        if i == 7:
+            save_dict[fully_kernel_name_list[20]] = np.delete(save_dict[fully_kernel_name_list[20]],
+                                                              pruned_ids[i] + 256, axis=1)
+        if i == 8:
+            save_dict[fully_kernel_name_list[23]] = np.delete(save_dict[fully_kernel_name_list[23]],
+                                                              pruned_ids[i] + 256, axis=1)
+    new_state_dict = {}
+    for n_k, n_v in new_model.state_dict().items():
+        if 'bn' not in n_k:
+            new_state_dict[n_k] = torch.from_numpy(save_dict[n_k])
+    new_model_state = new_model.state_dict()
+    new_model_state.update(new_state_dict)
+    new_model.load_state_dict(new_model_state)
+    new_model = fuse_identify_bn(new_model)
+    return new_model
