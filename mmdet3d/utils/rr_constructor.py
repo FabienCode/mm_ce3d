@@ -9,6 +9,7 @@ from mmcv.utils.ext_loader import check_ops_exist
 from mmdet3d.utils.builder import RR_OPTIMIZER_BUILDERS, RR_OPTIMIZERS
 # mm_ce3d_utils
 
+
 @RR_OPTIMIZER_BUILDERS.register_module()
 class RR_DefaultOptimizerConstructor:
     """Default constructor for optimizers.
