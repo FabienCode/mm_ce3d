@@ -5,6 +5,9 @@ from collections import defaultdict
 from itertools import chain
 import time
 from copy import deepcopy
+import torch
+import torch.nn as nn
+import gc
 
 from torch.nn.utils import clip_grad
 
@@ -23,9 +26,9 @@ except ImportError:
 
 BEFORE_MASK = 376 * 5
 # BEFORE_MASK = 0
-MASK_ITERs = 20
+MASK_ITERs = 30
 
-LASSO_FACTOR = 1e-3
+LASSO_FACTOR = 5e-9
 
 
 @HOOKS.register_module()
@@ -41,62 +44,76 @@ class RR_OptimizerHook(Hook):
             return clip_grad.clip_grad_norm_(params, **self.grad_clip)
 
     def before_train_iter(self, runner):
+        # pass
         runner.compactor_mask_dict = rrutils.get_compactor_mask_dict(runner.model)
         before_mask_iters = deepcopy(BEFORE_MASK)
         mask_interval = MASK_ITERs
         if runner.iter > before_mask_iters:
             total_iters_in_compactor_phase = runner.iter - before_mask_iters
             if total_iters_in_compactor_phase > 0 and (total_iters_in_compactor_phase % mask_interval == 0):
-                attempt_channels, attempt_flops = rrutils.resrep_mask_model(runner.model)
+                attempt_channels, attempt_flops, attempt_params = rrutils.resrep_mask_model(runner.model)
+                tmp_results_channels, _ = rrutils.get_deps_if_prune_low_metric(runner.model)
                 split_line = '=' * 30
                 input_shape = (40000, 3)
                 runner.logger.info("{}\nInput shape: {}\n"
-                                   "epoch {} iter {} flops is: {}".format(split_line, input_shape, runner.epoch,
-                                                                          runner.iter, attempt_flops))
-                # print(f'{split_line}\nInput shape: {input_shape}\n'
-                #       f'epoch {} iter {} Flops is: {}'.format()
-                # runner.log_buffer.update({'channel info': 'epoch {} iter {} channel is {}\n'.format(runner.epoch,
-                #                                                                                     runner.iter,
-                #                                                                                     attempt_channels)}
-                #                          , runner.outputs['channel_info'])
-                # runner.log_buffer.update({'test': attempt_channels})
+                                   "epoch {} iter {} flops is: {}. Params is :{}".format(split_line, input_shape, runner.epoch,
+                                                                          runner.iter, attempt_flops, attempt_params))
                 runner.logger.info(
-                    'epoch {} iter {} channel is {}\n'.format(runner.epoch, runner.iter, attempt_channels))
+                    'Mask Channels{}\nepoch {} iter {} mask channel is {}\n'.format(split_line, runner.epoch,
+                                                                                    runner.iter,
+                                                                                    attempt_channels))
+                runner.logger.info(
+                    'Result Channels{}\nepoch {} iter {} result channel is {}\n'.format(split_line, runner.epoch,
+                                                                                        runner.iter,
+                                                                                        tmp_results_channels))
                 runner.compactor_mask_dict = rrutils.get_compactor_mask_dict(runner.model)
+            # if total_iters_in_compactor_phase % 600 == 0:
+            #     tmp_results_channels, _ = rrutils.get_deps_if_prune_low_metric(runner.model)
+            #     runner.logger.info(
+            #         'epoch {} iter {} tmp result channel is {}\n'.format(runner.epoch, runner.iter,
+            #                                                              tmp_results_channels))
+            # runner.logger.info()
 
     def after_train_iter(self, runner):
         lasso_strength = LASSO_FACTOR
-        # lasso_loss = 0
-        # for compactor_para, mask in runner.compactor_mask_dict.items():
-        #     compactor_para.data = mask * compactor_para.data
-        #     tmp_loss = compactor_para.data * ((compactor_para.data ** 2).sum(dim=(1, 2, 3), keepdim=True) ** (-0.5))
-        #     # lasso_loss += compactor_para.data * ((compactor_para.data ** 2).sum(dim=(1, 2, 3), keepdim=True) ** (-0.5))
-        # runner.outputs['loss']['log_vars']['compactor_loss'] = lasso_loss
         runner.optimizer.zero_grad()
         runner.outputs['loss'].backward()
+        for name, param in runner.model.named_parameters():
+            if param.grad is None:
+                print(name, param.requires_grad)
+
         if self.grad_clip is not None:
             grad_norm = self.clip_grads(runner.model.parameters())
             if grad_norm is not None:
                 # Add grad norm to the logger
                 runner.log_buffer.update({'grad_norm': float(grad_norm)},
                                          runner.outputs['num_samples'])
-        # if 'compactor_mask_dict' in runner:
-        # pruned_params_list = [6, 10, 17, 21, 28, 32, 39, 43]
-        # i = 0
+
+        # ================ Res operation %%%%%%%%%%%%%%%% $$$$$$$$$$
         for compactor_para, mask in runner.compactor_mask_dict.items():
-            # tmp_gd = runner.optimizer.param_groups[0]['params'][pruned_params_list[i]].requires_grad
-            # runner.optimizer.param_groups[0]['params'][pruned_params_list[i]].requires_grad = True
             compactor_para.grad.data = mask * compactor_para.grad.data
-            lasso_grad = compactor_para.data * ((compactor_para.data ** 2).sum(dim=(1, 2, 3), keepdim=True) ** (-0.5))
-            # lasso_grad = compactor_para.data * ((compactor_para.data ** 2).sum(dim=(1, 2, 3), keepdim=True) ** (-0.5))
-            compactor_para.grad.data.add_(lasso_grad, alpha=lasso_strength)
-            # runner.optimizer.param_groups[0]['params'][pruned_params_list[i]] = compactor_para.grad.data.add_(
-            #     lasso_grad, alpha=lasso_strength)
-            # print('compactor_{}_weight is {}'.format(pruned_params_list[i],
-            #       runner.optimizer.param_groups[0]['params'][pruned_params_list[i]]))
-            # runner.outputs['log_vars']['compactor_{}_weight'.format(pruned_params_list[i])] = runner.optimizer.param_groups[0]['params'][pruned_params_list[i]]
-            # i += 1
+            # norm_grad = torch.sign(compactor_para.data)
+            norm_grad = compactor_para.data * ((compactor_para.data ** 2).sum(dim=(1, 2, 3), keepdim=True) ** (-0.5))
+            compactor_para.grad.data.add_(norm_grad, alpha=lasso_strength)
+
+        # =============== Dis point gradient apply ******************
+        # dis_factor = DIS_FACTOR
+        # dis_grad = []
+        # for child in runner.model.modules():
+        #     if hasattr(child, 'dis_points_grad'):
+        #         for i in range(len(child.dis_points_grad)):
+        #             dis_grad.append(copy.deepcopy(child.dis_points_grad[i]))
+        # cnt = 0
+        # for name, layer in runner.model.named_modules():
+        #     if isinstance(layer, nn.Conv2d) and 'SA_modules' in name:
+        #         layer.weight.grad.data.add_(dis_grad[cnt], alpha=DIS_FACTOR)
+        #         cnt += 1
+        del runner.compactor_mask_dict
+        gc.collect()
+
+
         runner.optimizer.step()
+
 
     def detect_anomalous_parameters(self, loss, runner):
         logger = runner.logger

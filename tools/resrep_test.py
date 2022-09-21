@@ -3,6 +3,7 @@ import mmcv
 import os
 import torch
 import warnings
+import mmcv.runner as runner
 from mmcv import Config, DictAction
 from mmcv.cnn import fuse_conv_bn
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
@@ -15,7 +16,7 @@ from mmdet3d.models import build_model
 from mmdet.apis import multi_gpu_test, set_random_seed
 from mmdet.datasets import replace_ImageToTensor
 
-from mmdet3d.utils.resrep_utils import compactor_convert
+from mmdet3d.utils.resrep_utils import compactor_convert, compactor_convert2
 
 
 def parse_args():
@@ -23,7 +24,7 @@ def parse_args():
         description='MMDet test (and eval) a model')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('checkpoint', help='checkpoint file')
-    parser.add_argument('--convert-model', default='True', help='convert fully to rep pruned model')
+    parser.add_argument('--convert-model', type=bool, default=True, help='convert fully to rep pruned model')
     parser.add_argument('--out', help='output result file in pickle format')
     parser.add_argument(
         '--fuse-conv-bn',
@@ -177,10 +178,13 @@ def main():
     checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
     if args.fuse_conv_bn:
         model = fuse_conv_bn(model)
+    model = fuse_conv_bn(model)
 
+    # model = compactor_weight_zero(model)
     if args.convert_model:
-        model = compactor_convert(model)
+        model = compactor_convert2(model, checkpoint)
 
+    print(model)
     # old versions did not save class info in checkpoints, this walkaround is
     # for backward compatibility
     if 'CLASSES' in checkpoint.get('meta', {}):

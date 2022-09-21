@@ -3,9 +3,10 @@ import torch
 from mmcv.runner import auto_fp16
 from torch import nn as nn
 
-from mmdet3d.ops import PointFPModule, build_sa_module
+from mmdet3d.ops import  build_sa_module
 from mmdet.models import BACKBONES
 from .base_pointnet import BasePointNet
+from mmdet3d.ops.pointnet_modules.point_fp_module import RR_PointFPModule, RRn_PointFPModule
 
 
 @BACKBONES.register_module()
@@ -79,15 +80,20 @@ class RR_PointNet2SASSG(BasePointNet):
         fp_source_channel = skip_channel_list.pop()
         fp_target_channel = skip_channel_list.pop()
         for fp_index in range(len(fp_channels)):
-            cur_fp_mlps = list(fp_channels[fp_index])
-            cur_fp_mlps = [fp_source_channel + fp_target_channel] + cur_fp_mlps
-
-            self.FP_modules.append(PointFPModule(mlp_channels=cur_fp_mlps))
-            pwc = nn.Conv2d(cur_fp_mlps, cur_fp_mlps, kernel_size=(1, 1), stride=(1, 1), bias=False)
-            self.FP_modules.append(pwc)
             if fp_index != len(fp_channels) - 1:
-                fp_source_channel = cur_fp_mlps[-1]
-                fp_target_channel = skip_channel_list.pop()
+                cur_fp_mlps = list(fp_channels[fp_index])
+                cur_fp_mlps = [fp_source_channel + fp_target_channel] + cur_fp_mlps
+                self.FP_modules.append(RR_PointFPModule(mlp_channels=cur_fp_mlps))
+                if fp_index != len(fp_channels) - 1:
+                    fp_source_channel = cur_fp_mlps[-1]
+                    fp_target_channel = skip_channel_list.pop()
+            else:
+                cur_fp_mlps = list(fp_channels[fp_index])
+                cur_fp_mlps = [fp_source_channel + fp_target_channel] + cur_fp_mlps
+                self.FP_modules.append(RRn_PointFPModule(mlp_channels=cur_fp_mlps))
+                if fp_index != len(fp_channels) - 1:
+                    fp_source_channel = cur_fp_mlps[-1]
+                    fp_target_channel = skip_channel_list.pop()
 
     @auto_fp16(apply_to=('points',))
     def forward(self, points):

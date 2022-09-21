@@ -1,5 +1,5 @@
 dataset_type = 'SUNRGBDDataset'
-data_root = '/data2/ecnu/hym/fcaf3d/data/sunrgbd/'
+data_root = '/data/private/hym/project/fcaf3d_midea/data/sunrgbd/'
 class_names = ('bed', 'table', 'sofa', 'chair', 'toilet', 'desk', 'dresser',
                'night_stand', 'bookshelf', 'bathtub')
 train_pipeline = [
@@ -72,7 +72,7 @@ eval_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=16,
     workers_per_gpu=4,
     train=dict(
         type='RepeatDataset',

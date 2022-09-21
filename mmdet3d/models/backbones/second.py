@@ -71,8 +71,10 @@ class SECOND(BaseModule):
             warnings.warn('DeprecationWarning: pretrained is a deprecated, '
                           'please use "init_cfg" instead')
             self.init_cfg = dict(type='Pretrained', checkpoint=pretrained)
-        else:
+        elif self.init_cfg is None:
             self.init_cfg = dict(type='Kaiming', layer='Conv2d')
+        else:
+            self.init_cfg = init_cfg
 
     def forward(self, x):
         """Forward function.

@@ -62,21 +62,21 @@ def nuscenes_data_prep(root_path,
         out_dir (str): Output directory of the groundtruth database info.
         max_sweeps (int): Number of input consecutive frames. Default: 10
     """
-    nuscenes_converter.create_nuscenes_infos(
-        root_path, info_prefix, version=version, max_sweeps=max_sweeps)
-
-    if version == 'v1.0-test':
-        info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
-        nuscenes_converter.export_2d_annotation(
-            root_path, info_test_path, version=version)
-        return
-
-    info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
-    info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
-    nuscenes_converter.export_2d_annotation(
-        root_path, info_train_path, version=version)
-    nuscenes_converter.export_2d_annotation(
-        root_path, info_val_path, version=version)
+    # nuscenes_converter.create_nuscenes_infos(
+    #     root_path, info_prefix, version=version, max_sweeps=max_sweeps)
+    #
+    # if version == 'v1.0-test':
+    #     info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
+    #     nuscenes_converter.export_2d_annotation(
+    #         root_path, info_test_path, version=version)
+    #     return
+    #
+    # info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
+    # info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
+    # nuscenes_converter.export_2d_annotation(
+    #     root_path, info_train_path, version=version)
+    # nuscenes_converter.export_2d_annotation(
+    #     root_path, info_val_path, version=version)
     create_groundtruth_database(dataset_name, root_path, info_prefix,
                                 f'{out_dir}/{info_prefix}_infos_train.pkl')
 

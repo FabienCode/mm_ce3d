@@ -4,6 +4,7 @@ import torch
 from mmdet3d.core import bbox3d2result, merge_aug_bboxes_3d
 from mmdet.models import DETECTORS
 from .single_stage import SingleStage3DDetector
+import torch.nn.functional as F
 
 
 @DETECTORS.register_module()
@@ -57,6 +58,14 @@ class GroupFree3DNet(SingleStage3DDetector):
                        pts_instance_mask, img_metas)
         losses = self.bbox_head.loss(
             bbox_preds, *loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)
+
+        cof_loss = 0
+        for i in range(len(x['ori_features'])):
+            # with torch.no_grad():
+            ori_feature = x['ori_features'][i].detach()
+            cof_feature = x['cof_features'][i]
+            cof_loss += F.mse_loss(ori_feature, cof_feature)
+        losses['cof_features_loss'] = cof_loss
         return losses
 
     def simple_test(self, points, img_metas, imgs=None, rescale=False):

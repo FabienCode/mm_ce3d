@@ -780,7 +780,12 @@ class PointsRangeFilter(object):
         points_mask = points.in_range_3d(self.pcd_range)
         clean_points = points[points_mask]
         input_dict['points'] = clean_points
-        points_mask = points_mask.numpy()
+
+        # #gt_points filter
+        # gt_points = input_dict['gt_points']
+        # gt_points_mask = gt_points.in_range_3d(self.pcd_range)
+        # gt_clean_points = gt_points[gt_points_mask]
+        # input_dict['gt_points'] = gt_clean_points
 
         pts_instance_mask = input_dict.get('pts_instance_mask', None)
         pts_semantic_mask = input_dict.get('pts_semantic_mask', None)

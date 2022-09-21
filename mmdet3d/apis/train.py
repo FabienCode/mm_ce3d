@@ -1,6 +1,6 @@
-# from mmdet.apis import train_detector
+from mmdet.apis import train_detector
 from mmseg.apis import train_segmentor
-from mmdet3d.apis.train_resrep import train_detector
+# from mmdet3d.apis.train_resrep import train_detector
 
 
 def train_model(model,

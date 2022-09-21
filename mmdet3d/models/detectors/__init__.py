@@ -14,10 +14,13 @@ from .single_stage_mono3d import SingleStageMono3DDetector
 from .ssd3dnet import SSD3DNet
 from .votenet import VoteNet
 from .voxelnet import VoxelNet
+from .cd_rr_votenet import cd_rr_VoteNet
+from .ssd_pcpa import SSD3DNet_pcpa
+from .voxelnet_pcpa import VoxelNet_pcpa
 
 __all__ = [
     'Base3DDetector', 'VoxelNet', 'DynamicVoxelNet', 'MVXTwoStageDetector',
     'DynamicMVXFasterRCNN', 'MVXFasterRCNN', 'PartA2', 'VoteNet', 'H3DNet',
     'CenterPoint', 'SSD3DNet', 'ImVoteNet', 'SingleStageMono3DDetector',
-    'FCOSMono3D', 'ImVoxelNet', 'GroupFree3DNet'
+    'FCOSMono3D', 'ImVoxelNet', 'GroupFree3DNet', 'cd_rr_VoteNet', 'SSD3DNet_pcpa', 'VoxelNet_pcpa'
 ]

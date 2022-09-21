@@ -252,6 +252,20 @@ def create_groundtruth_database(dataset_class_name,
 
         num_obj = gt_boxes_3d.shape[0]
         point_indices = box_np_ops.points_in_rbbox(points, gt_boxes_3d)
+        fully_point_indices = np.sum(point_indices, 1)
+        fully_gt_points = points[fully_point_indices > 0, :]
+        gt_pts_filename = example['pts_filename'].split('.')[0] + '_gt.bin'
+        # gt_pts_filename_path= osp.join(gt_pts_filename)
+
+        # gt_pts_filename = osp.join(gt_pts_filename, f'.bin')
+        # gt_pts_filename = f'{gt_pts_filename}_gt.bin'
+        # mmcv.mkdir_or_exist(gt_pts_filename)
+        with open(gt_pts_filename, 'w') as f:
+            fully_gt_points.tofile(f)
+            print("gt_points to file successfully!!!")
+            print('\n{} have {} objects, and fully have {}points inner bounding box'.format(gt_pts_filename,
+                                                                                          point_indices.shape[1],
+                                                                                          fully_gt_points.shape[0]))
 
         if with_mask:
             # prepare masks
@@ -284,6 +298,7 @@ def create_groundtruth_database(dataset_class_name,
             object_img_patches, object_masks = crop_image_patch(
                 gt_boxes, gt_masks, mask_inds, annos['img'])
 
+        # tmp_gt_points = []
         for i in range(num_obj):
             filename = f'{image_idx}_{names[i]}_{i}.bin'
             abs_filepath = osp.join(database_save_path, filename)
@@ -292,6 +307,7 @@ def create_groundtruth_database(dataset_class_name,
             # save point clouds and image patches for each object
             gt_points = points[point_indices[:, i]]
             gt_points[:, :3] -= gt_boxes_3d[i, :3]
+            # tmp_gt_points.append(gt_points)
 
             if with_mask:
                 if object_masks[i].sum() == 0 or not valid_inds[i]:
@@ -329,6 +345,9 @@ def create_groundtruth_database(dataset_class_name,
                     all_db_infos[names[i]].append(db_info)
                 else:
                     all_db_infos[names[i]] = [db_info]
+        # gt_filename = f'{image_idx}_gt_pts.bin'
+        # with open(gt_filename, 'w') as f:
+        #     tmp_gt_points.tofile(f)
 
     for k, v in all_db_infos.items():
         print(f'load {len(v)} {k} database infos')

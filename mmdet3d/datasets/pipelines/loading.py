@@ -5,6 +5,10 @@ import numpy as np
 from mmdet3d.core.points import BasePoints, get_points_type
 from mmdet.datasets.builder import PIPELINES
 from mmdet.datasets.pipelines import LoadAnnotations, LoadImageFromFile
+import torch
+from mmdet3d.core.bbox import box_np_ops as box_np_ops
+from mmdet3d.core.bbox.box_np_ops import corner_to_surfaces_3d
+from mmdet3d.core.bbox.box_np_ops import points_in_convex_polygon_3d_jit
 
 
 @PIPELINES.register_module()
@@ -314,11 +318,11 @@ class NormalizePointsColor(object):
         """
         points = results['points']
         assert points.attribute_dims is not None and \
-            'color' in points.attribute_dims.keys(), \
+               'color' in points.attribute_dims.keys(), \
             'Expect points have color attribute'
         if self.color_mean is not None:
             points.color = points.color - \
-                points.color.new_tensor(self.color_mean)
+                           points.color.new_tensor(self.color_mean)
         points.color = points.color / 255.0
         results['points'] = points
         return results
@@ -398,6 +402,37 @@ class LoadPointsFromFile(object):
 
         return points
 
+    def points_random_sampling(self,
+                               points,
+                               num_samples,
+                               replace=None,
+                               return_choices=False):
+        """Points random sampling.
+
+        Sample points to a certain number.
+
+        Args:
+            points (np.ndarray | :obj:`BasePoints`): 3D Points.
+            num_samples (int): Number of samples to be sampled.
+            replace (bool): Whether the sample is with or without replacement.
+            Defaults to None.
+            return_choices (bool): Whether return choice. Defaults to False.
+
+        Returns:
+            tuple[np.ndarray] | np.ndarray:
+
+                - points (np.ndarray | :obj:`BasePoints`): 3D Points.
+                - choices (np.ndarray, optional): The generated random samples.
+        """
+        if replace is None:
+            replace = (points.shape[0] < num_samples)
+        choices = np.random.choice(
+            points.shape[0], num_samples, replace=replace)
+        if return_choices:
+            return points[choices], choices
+        else:
+            return points[choices]
+
     def __call__(self, results):
         """Call function to load points data from file.
 
@@ -410,10 +445,12 @@ class LoadPointsFromFile(object):
 
                 - points (:obj:`BasePoints`): Point clouds data.
         """
+
         pts_filename = results['pts_filename']
         points = self._load_points(pts_filename)
         points = points.reshape(-1, self.load_dim)
         points = points[:, self.use_dim]
+        points_tmp = points
         attribute_dims = None
 
         if self.shift_height:
@@ -439,6 +476,45 @@ class LoadPointsFromFile(object):
         points = points_class(
             points, points_dim=points.shape[-1], attribute_dims=attribute_dims)
         results['points'] = points
+
+        # obtain gt_points
+        if 'ann_info' in results:
+            corners = results['ann_info']['gt_bboxes_3d'].corners.numpy()
+            gt_obj_points_indices = find_gt_points(points_tmp[:, 0:3], corners)
+            gt_points_indices = torch.from_numpy(np.sum(gt_obj_points_indices, 1))
+            tmp_gt_points = points_tmp[gt_points_indices > 0, :]
+
+            gt_points = np.zeros((16384, self.load_dim))
+            if tmp_gt_points.shape[0] > 16384:
+                final_gt_points = self.points_random_sampling(gt_points, 16384)
+                gt_points = final_gt_points
+            else:
+                gt_points[0: tmp_gt_points.shape[0], :] = tmp_gt_points
+
+            gt_attribute_dims = None
+            if self.shift_height:
+                gt_floor_height = np.percentile(gt_points[:, 2], 0.99)
+                gt_height = gt_points[:, 2] - gt_floor_height
+                gt_points = np.concatenate(
+                    [gt_points[:, :3],
+                     np.expand_dims(gt_height, 1), gt_points[:, 3:]], 1)
+                gt_attribute_dims = dict(height=3)
+
+            if self.use_color:
+                assert len(self.use_dim) >= 6
+                if gt_attribute_dims is None:
+                    gt_attribute_dims = dict()
+                gt_attribute_dims.update(
+                    dict(color=[
+                        points.shape[1] - 3,
+                        points.shape[1] - 2,
+                        points.shape[1] - 1,
+                    ]))
+
+            gt_points_class = get_points_type(self.coord_type)
+            gt_points = gt_points_class(
+                gt_points, points_dim=gt_points.shape[-1], attribute_dims=gt_attribute_dims)
+            results['gt_points'] = gt_points
 
         return results
 
@@ -667,3 +743,9 @@ class LoadAnnotations3D(LoadAnnotations):
         repr_str += f'{indent_str}with_bbox_depth={self.with_bbox_depth}, '
         repr_str += f'{indent_str}poly2mask={self.poly2mask})'
         return repr_str
+
+
+def find_gt_points(points, corner):
+    surfaces = corner_to_surfaces_3d(corner)
+    indices = points_in_convex_polygon_3d_jit(points[:, :3], surfaces)
+    return indices

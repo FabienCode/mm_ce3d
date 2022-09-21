@@ -26,7 +26,7 @@ model = dict(
         pts=dict(voxel_size=voxel_size[:2], pc_range=point_cloud_range[:2])))
 
 dataset_type = 'NuScenesDataset'
-data_root = 'data/nuscenes/'
+data_root = '/data/private/hym/project/fcaf3d_midea/data/nuscenes/'
 file_client_args = dict(backend='disk')
 
 db_sampler = dict(

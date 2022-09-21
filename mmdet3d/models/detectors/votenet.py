@@ -1,6 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-import torch
+import copy
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from mmdet3d.core import bbox3d2result, merge_aug_bboxes_3d
 from mmdet.models import DETECTORS
 from .single_stage import SingleStage3DDetector
@@ -53,11 +56,20 @@ class VoteNet(SingleStage3DDetector):
         points_cat = torch.stack(points)
 
         x = self.extract_feat(points_cat)
+
+
         bbox_preds = self.bbox_head(x, self.train_cfg.sample_mod)
         loss_inputs = (points, gt_bboxes_3d, gt_labels_3d, pts_semantic_mask,
                        pts_instance_mask, img_metas)
         losses = self.bbox_head.loss(
             bbox_preds, *loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)
+
+        # for i in range(len(x['ori_features'])):
+        #     with torch.no_grad():
+        #         ori_feature = x['ori_features'][i].detach()
+        #     cof_feature = x['cof_features'][i]
+        #     losses['cof_loss_{}'.format(i)] = F.mse_loss(ori_feature, cof_feature)
+
         return losses
 
     def simple_test(self, points, img_metas, imgs=None, rescale=False):

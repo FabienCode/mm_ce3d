@@ -158,7 +158,6 @@ class RR_ConvModule(nn.Module):
         # build compactor layers
         self.compactor = CompactorLayer(out_channels)
 
-
         # build activation layer
         if self.with_activation:
             act_cfg_ = act_cfg.copy()
@@ -208,7 +207,7 @@ class RR_ConvModule(nn.Module):
                 x = self.conv(x)
             elif layer == 'norm' and norm and self.with_norm:
                 x = self.norm(x)
-            if layer == 'compactor':
+            elif layer == 'compactor':
                 if self.with_explicit_padding:
                     x = self.padding_layer(x)
                 x = self.compactor(x)
@@ -216,13 +215,14 @@ class RR_ConvModule(nn.Module):
                 x = self.activate(x)
         return x
 
+
 class CompactorLayer(torch.nn.Module):
 
     def __init__(self, num_features):
         super(CompactorLayer, self).__init__()
         # self.conv_idx = conv_idx
         self.pwc = nn.Conv2d(in_channels=num_features, out_channels=num_features, kernel_size=1,
-                          stride=1, padding=0, bias=False)
+                             stride=1, padding=0, bias=False)
         identity_mat = np.eye(num_features, dtype=np.float32)
         self.pwc.weight.data.copy_(torch.from_numpy(identity_mat).reshape(num_features, num_features, 1, 1))
         self.register_buffer('mask', torch.ones(num_features))
@@ -231,7 +231,6 @@ class CompactorLayer(torch.nn.Module):
 
     def forward(self, inputs):
         return self.pwc(inputs)
-
 
     def set_mask(self, zero_indices):
         new_mask_value = np.ones(self.num_features, dtype=np.float32)
@@ -258,5 +257,6 @@ class CompactorLayer(torch.nn.Module):
         return lasso_vector
 
     def get_metric_vector(self):
+        # metric_vector = torch.norm(self.get_pwc_kernel_detach(), 1, dim=(1, 2, 3)).cpu().numpy()
         metric_vector = torch.sqrt(torch.sum(self.get_pwc_kernel_detach() ** 2, dim=(1, 2, 3))).cpu().numpy()
         return metric_vector
